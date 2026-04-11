@@ -1,0 +1,4 @@
+# Optional: install when running async FastAPI + PostgreSQL (Phase 3+).
+# asyncpg wheels may require a supported Python version (check asyncpg release notes).
+-r base.txt
+asyncpg>=0.29.0

@@ -1,0 +1,16 @@
+{
+  "description": "Deterministic local-dev seed. Replace credentials before any shared environment.",
+  "order": [
+    "roles.csv",
+    "business_units.csv",
+    "teams.csv",
+    "locations.csv",
+    "users.csv",
+    "user_roles.csv",
+    "cve_records.csv",
+    "assets.csv",
+    "vulnerability_findings.csv"
+  ],
+  "demo_password_env": "VULNOPS_SEED_PASSWORD",
+  "default_demo_password": "VulnOps!demo2026"
+}

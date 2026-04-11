@@ -1,0 +1,14 @@
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "."
+
+# Used by `pip-compile` when run from `backend/` (CI + local lock refresh).
+[tool.pip-tools]
+generate_hashes = false
+strip_extras = true
+newline = "lf"
+no_header = true
+no_annotate = false

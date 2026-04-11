@@ -1,0 +1,53 @@
+name: Deploy staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_image:
+        description: "API container image (immutable tag recommended)"
+        required: true
+        default: "ghcr.io/example/vulnops-api:staging"
+      web_image:
+        description: "Web container image"
+        required: true
+        default: "ghcr.io/example/vulnops-web:staging"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional: OIDC to AWS then EKS (set secret AWS_DEPLOY_ROLE_ARN and uncomment).
+      # - uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      #     aws-region: ${{ vars.AWS_REGION }}
+      # - run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}
+
+      - name: Apply rollout (replace with kubectl or Helm)
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          WEB_IMAGE: ${{ inputs.web_image }}
+        run: |
+          echo "Dispatch received: API=$API_IMAGE WEB=$WEB_IMAGE"
+          echo "Example: kubectl set image deployment/vulnops-api api=$API_IMAGE -n vulnops"
+          echo "Or: kubectl apply -k infra/k8s/overlays/staging (after kustomize edit set image)"
+          echo "See docs/deployment/github-oidc-kubernetes.md"
+
+      - name: Post-deploy smoke (public API URL)
+        env:
+          BASE: ${{ secrets.STAGING_PUBLIC_API_BASE_URL }}
+        run: |
+          if [ -z "${BASE:-}" ]; then
+            echo "STAGING_PUBLIC_API_BASE_URL not set — skipping smoke."
+            exit 0
+          fi
+          curl -sfS "${BASE}/health"
+          curl -sfS "${BASE}/ready"
+          echo "Smoke OK for $BASE"

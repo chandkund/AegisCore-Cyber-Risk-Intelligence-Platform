@@ -1,0 +1,52 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_image:
+        description: "API container image (immutable digest strongly recommended)"
+        required: true
+        default: "ghcr.io/example/vulnops-api:production"
+      web_image:
+        description: "Web container image"
+        required: true
+        default: "ghcr.io/example/vulnops-web:production"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional: OIDC to AWS then EKS — use a dedicated production role (least privilege).
+      # - uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PRODUCTION }}
+      #     aws-region: ${{ vars.AWS_REGION }}
+      # - run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}
+
+      - name: Apply rollout (replace with kubectl or Helm)
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          WEB_IMAGE: ${{ inputs.web_image }}
+        run: |
+          echo "Dispatch received: API=$API_IMAGE WEB=$WEB_IMAGE"
+          echo "Example: kubectl apply -k infra/k8s/overlays/production"
+          echo "See docs/deployment/github-oidc-kubernetes.md"
+
+      - name: Post-deploy smoke (public API URL)
+        env:
+          BASE: ${{ secrets.PRODUCTION_PUBLIC_API_BASE_URL }}
+        run: |
+          if [ -z "${BASE:-}" ]; then
+            echo "PRODUCTION_PUBLIC_API_BASE_URL not set — skipping smoke."
+            exit 0
+          fi
+          curl -sfS "${BASE}/health"
+          curl -sfS "${BASE}/ready"
+          echo "Smoke OK for $BASE"

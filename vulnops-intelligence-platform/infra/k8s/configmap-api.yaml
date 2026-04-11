@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vulnops-api-config
+  namespace: vulnops
+data:
+  CORS_ORIGINS: "https://app.example.com"
+  LOG_JSON: "true"
+  LOG_LEVEL: "INFO"
+  ML_INFERENCE_ENABLED: "false"
+  PROMETHEUS_METRICS_ENABLED: "false"
+  APP_ENV: "production"

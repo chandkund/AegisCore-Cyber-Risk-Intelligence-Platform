@@ -1,0 +1,4 @@
+id,cve_id,title,severity,cvss_base_score,epss_score,exploit_available
+b1000001-0000-4000-8000-000000000001,CVE-2024-0001,Example RCE in sample service,CRITICAL,9.8,0.42000,true
+b1000001-0000-4000-8000-000000000002,CVE-2024-0002,Example privilege escalation,HIGH,7.8,0.15000,false
+b1000001-0000-4000-8000-000000000003,CVE-2024-0003,Example information disclosure,MEDIUM,5.3,0.03000,false

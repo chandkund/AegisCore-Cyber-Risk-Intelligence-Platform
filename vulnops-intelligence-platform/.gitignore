@@ -1,0 +1,50 @@
+# Secrets and local env
+.env
+.env.*.local
+docker-compose.override.yml
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+
+# pip-tools optional compile output (Phase 9)
+backend/requirements/compiled/
+
+# ML artifacts (tracked metadata only; not large binaries in git by default)
+ml/models/artifacts/*
+!ml/models/artifacts/.gitkeep
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Database dumps (local)
+*.sql.gz
+*.dump

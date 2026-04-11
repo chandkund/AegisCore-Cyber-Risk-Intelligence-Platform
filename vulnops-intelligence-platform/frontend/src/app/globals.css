@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface: 15 23 42;
+  --surface-muted: 30 41 59;
+  --accent: 56 189 248;
+  --accent-hover: 125 211 252;
+}
+
+body {
+  @apply min-h-screen bg-slate-950 text-slate-100 antialiased;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-sky-400;
+}

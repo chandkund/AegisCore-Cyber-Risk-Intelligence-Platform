@@ -1,0 +1,10 @@
+# Copy to `docker-compose.override.yml` (gitignored) for developer-specific overrides.
+# Example: mount a trained ML artifact, bind-mount backend for hot reload experiments, or change ports.
+
+services:
+  api:
+    volumes:
+      # Optional: mount a host joblib bundle (path is inside the container).
+      - ./ml/models/artifacts/risk_prioritization.joblib:/app/ml/models/artifacts/risk_prioritization.joblib:ro
+    environment:
+      ML_INFERENCE_ENABLED: "true"
