@@ -136,11 +136,16 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install and test
+      - name: Install, lint, unit test, build, E2E
+        env:
+          CI: true
         run: |
           npm ci
           npm test
+          npm run lint
           npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e
 
   docker-build:
     runs-on: ubuntu-latest

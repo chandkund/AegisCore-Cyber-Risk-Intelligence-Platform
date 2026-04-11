@@ -25,6 +25,11 @@ node_modules/
 out/
 .turbo/
 
+# Playwright (frontend)
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
 # pip-tools optional compile output (Phase 9)
 backend/requirements/compiled/
 

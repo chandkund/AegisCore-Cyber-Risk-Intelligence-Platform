@@ -163,7 +163,9 @@ Optional ML artifact: copy `docker-compose.override.example.yml` to `docker-comp
 
 ## Continuous integration
 
-Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (every **push** / **pull_request**): **Ruff** check + **`ruff format --check`**, **mypy**, **`requirements-lock`** (re-runs `pip-compile` and **diffs** committed `backend/requirements/*.txt`), backend **pytest** (integration excluded by default), **Alembic upgrade head** on Postgres, **frontend** `npm ci` / `npm test` / `npm run build`, **Docker Buildx** image builds (**`load: true`**), **Trivy** **container** scans with **SARIF** upload to the **Security** tab (same-repo PRs only) + **CRITICAL** gates, and **Trivy** filesystem scan (CRITICAL gate).
+Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (every **push** / **pull_request**): **Ruff** check + **`ruff format --check`**, **mypy**, **`requirements-lock`** (re-runs `pip-compile` and **diffs** committed `backend/requirements/*.txt`), backend **pytest** (integration excluded by default), **Alembic upgrade head** on Postgres, **frontend** `npm ci` / `npm test` / **`npm run lint`** / `npm run build` / **Playwright E2E** (`frontend/tests/e2e/`, Chromium), **Docker Buildx** image builds (**`load: true`**), **Trivy** **container** scans with **SARIF** upload to the **Security** tab (same-repo PRs only) + **CRITICAL** gates, and **Trivy** filesystem scan (CRITICAL gate).
+
+**Local smoke (optional):** with API running, `scripts/smoke_api.sh` or `scripts/smoke_api.ps1` hits **`GET /health`** and **`GET /ready`** (set `SKIP_READY=1` if Postgres is down). Frontend E2E: from `frontend/`, run `npm run build` then `npm run test:e2e` (install browsers once: `npx playwright install chromium`).
 
 Scheduled / manual integration: [`.github/workflows/integration.yml`](.github/workflows/integration.yml) — migrates, seeds OLTP, runs **`pytest -m integration`**.
 
