@@ -114,5 +114,7 @@ class FindingSeedRow(BaseModel):
         if v is None or isinstance(v, datetime):
             return v
         if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if not str(v).strip():
+                return None
+            return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
         raise TypeError("invalid datetime")

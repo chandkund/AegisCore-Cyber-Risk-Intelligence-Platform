@@ -45,3 +45,15 @@ def test_finding_parses_iso_datetime():
     )
     assert f.discovered_at.tzinfo is not None
     assert f.discovered_at == datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_finding_seed_empty_due_at_string_becomes_none():
+    f = FindingSeedRow(
+        id="d0000000-0000-4000-8000-000000000002",
+        asset_id="c0000000-0000-4000-8000-000000000002",
+        cve_id="CVE-2024-0002",
+        status="OPEN",
+        discovered_at="2026-01-02T00:00:00+00:00",
+        due_at="",
+    )
+    assert f.due_at is None
