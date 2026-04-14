@@ -32,6 +32,18 @@ class Role(Base):
     description: Mapped[Optional[str]] = mapped_column(String(512))
 
 
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
@@ -40,6 +52,9 @@ class User(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -106,6 +121,9 @@ class Asset(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     hostname: Mapped[Optional[str]] = mapped_column(String(253))
@@ -120,6 +138,7 @@ class Asset(Base):
         UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL")
     )
     criticality: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="3")
+    is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", index=True)
     owner_email: Mapped[Optional[str]] = mapped_column(String(320))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
@@ -128,6 +147,8 @@ class Asset(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    findings: Mapped[list["VulnerabilityFinding"]] = relationship(back_populates="asset")
 
 
 class AssetAttribute(Base):
@@ -140,6 +161,37 @@ class AssetAttribute(Base):
     )
     key: Mapped[str] = mapped_column(String(120), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AssetDependency(Base):
+    __tablename__ = "asset_dependencies"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "source_asset_id",
+            "target_asset_id",
+            name="uq_asset_dependencies_tenant_source_target",
+        ),
+        Index("ix_asset_dependencies_tenant_source", "tenant_id", "source_asset_id"),
+        Index("ix_asset_dependencies_tenant_target", "tenant_id", "target_asset_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    target_asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    dependency_type: Mapped[str] = mapped_column(String(64), nullable=False, server_default="network")
+    trust_level: Mapped[str] = mapped_column(String(32), nullable=False, server_default="medium")
+    lateral_movement_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 2))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class CveRecord(Base):
@@ -158,6 +210,8 @@ class CveRecord(Base):
     epss_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 5))
     exploit_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
+    findings: Mapped[list["VulnerabilityFinding"]] = relationship(back_populates="cve_record")
+
 
 class VulnerabilityFinding(Base):
     __tablename__ = "vulnerability_findings"
@@ -168,6 +222,9 @@ class VulnerabilityFinding(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     asset_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
@@ -182,6 +239,9 @@ class VulnerabilityFinding(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     internal_priority_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    risk_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True, index=True)
+    risk_factors: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    risk_calculated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -189,6 +249,9 @@ class VulnerabilityFinding(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    asset: Mapped["Asset"] = relationship(back_populates="findings")
+    cve_record: Mapped["CveRecord"] = relationship(back_populates="findings")
 
 
 class RemediationEvent(Base):
@@ -264,4 +327,112 @@ class RefreshToken(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class RemediationTicket(Base):
+    __tablename__ = "remediation_tickets"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "provider",
+            "external_ticket_id",
+            name="uq_remediation_tickets_provider_external_per_tenant",
+        ),
+        Index("ix_remediation_tickets_finding", "finding_id"),
+        Index("ix_remediation_tickets_provider_status", "provider", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vulnerability_findings.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_ticket_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_url: Mapped[Optional[str]] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="OPEN")
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload: Mapped[Optional[dict]] = mapped_column(JSONB)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PolicyRule(Base):
+    __tablename__ = "policy_rules"
+    __table_args__ = (
+        Index("ix_policy_rules_tenant_enabled", "tenant_id", "is_enabled"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500))
+    conditions: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, server_default="flag")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="MEDIUM")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PrioritizationFeedback(Base):
+    __tablename__ = "prioritization_feedback"
+    __table_args__ = (
+        Index("ix_prioritization_feedback_finding", "finding_id"),
+        Index("ix_prioritization_feedback_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vulnerability_findings.id", ondelete="CASCADE"), nullable=False
+    )
+    feedback_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    actor_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class BackgroundJob(Base):
+    __tablename__ = "background_jobs"
+    __table_args__ = (
+        Index("ix_background_jobs_tenant_status", "tenant_id", "status"),
+        Index("ix_background_jobs_kind_created", "job_kind", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    job_kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="QUEUED")
+    payload: Mapped[Optional[dict]] = mapped_column(JSONB)
+    result: Mapped[Optional[dict]] = mapped_column(JSONB)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

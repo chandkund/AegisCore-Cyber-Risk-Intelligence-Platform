@@ -3,16 +3,41 @@
 @tailwind utilities;
 
 :root {
-  --surface: 15 23 42;
-  --surface-muted: 30 41 59;
-  --accent: 56 189 248;
-  --accent-hover: 125 211 252;
+  --bg: 248 250 252;
+  --fg: 15 23 42;
+  --surface: 255 255 255;
+  --surface-muted: 241 245 249;
+  --border: 226 232 240;
+  --accent: 14 165 233;
+  --accent-hover: 2 132 199;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 2 6 23;
+    --fg: 226 232 240;
+    --surface: 15 23 42;
+    --surface-muted: 30 41 59;
+    --border: 51 65 85;
+    --accent: 56 189 248;
+    --accent-hover: 125 211 252;
+  }
 }
 
 body {
-  @apply min-h-screen bg-slate-950 text-slate-100 antialiased;
+  @apply min-h-screen antialiased;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
 }
 
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-sky-400;
+}
+
+@layer components {
+  .app-panel {
+    @apply rounded-xl border p-4 shadow-lg backdrop-blur-sm;
+    background-color: rgb(var(--surface) / 0.72);
+    border-color: rgb(var(--border) / 0.9);
+  }
 }

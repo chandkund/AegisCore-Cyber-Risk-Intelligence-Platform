@@ -1,11 +1,21 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, field_validator
+import re
+
+EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not EMAIL_PATTERN.match(v):
+            raise ValueError("Invalid email format")
+        return v.lower().strip()
 
 
 class TokenResponse(BaseModel):
@@ -25,6 +35,7 @@ class LogoutRequest(BaseModel):
 
 class MeResponse(BaseModel):
     id: str
+    tenant_id: str
     email: str
     full_name: str
     roles: list[str]

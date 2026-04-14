@@ -16,6 +16,7 @@ class AssetRepository:
     def list_assets(
         self,
         *,
+        tenant_id: uuid.UUID,
         limit: int,
         offset: int,
         business_unit_id: uuid.UUID | None = None,
@@ -24,6 +25,8 @@ class AssetRepository:
     ) -> tuple[Sequence[Asset], int]:
         id_subq = select(Asset.id)
         list_stmt = select(Asset)
+        id_subq = id_subq.where(Asset.tenant_id == tenant_id)
+        list_stmt = list_stmt.where(Asset.tenant_id == tenant_id)
         if business_unit_id:
             id_subq = id_subq.where(Asset.business_unit_id == business_unit_id)
             list_stmt = list_stmt.where(Asset.business_unit_id == business_unit_id)
@@ -44,8 +47,11 @@ class AssetRepository:
         rows = self.db.execute(list_stmt).scalars().all()
         return rows, total
 
-    def get_by_id(self, asset_id: uuid.UUID) -> Asset | None:
-        return self.db.get(Asset, asset_id)
+    def get_by_id(self, asset_id: uuid.UUID, tenant_id: uuid.UUID | None = None) -> Asset | None:
+        stmt = select(Asset).where(Asset.id == asset_id)
+        if tenant_id is not None:
+            stmt = stmt.where(Asset.tenant_id == tenant_id)
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def create(self, row: Asset) -> Asset:
         self.db.add(row)

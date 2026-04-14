@@ -11,6 +11,8 @@ from app.repositories.cve_repository import CveRepository
 from app.repositories.finding_repository import FindingRepository
 from app.schemas.finding import FindingCreate, FindingOut, FindingUpdate
 from app.services.audit_service import AuditService
+from app.services.risk_engine_service import RiskEngineService
+from app.services.ticketing_service import TicketingService
 
 
 class FindingService:
@@ -43,6 +45,9 @@ class FindingService:
             due_at=f.due_at,
             assigned_to_user_id=str(f.assigned_to_user_id) if f.assigned_to_user_id else None,
             internal_priority_score=f.internal_priority_score,
+            risk_score=f.risk_score,
+            risk_factors=f.risk_factors,
+            risk_calculated_at=f.risk_calculated_at,
             notes=f.notes,
             created_at=f.created_at,
             updated_at=f.updated_at,
@@ -51,6 +56,7 @@ class FindingService:
     def list_findings(
         self,
         *,
+        tenant_id: uuid.UUID,
         limit: int,
         offset: int,
         status: str | None,
@@ -59,6 +65,7 @@ class FindingService:
         search: str | None,
     ) -> tuple[list[FindingOut], int]:
         rows, total = self.repo.list_findings(
+            tenant_id=tenant_id,
             limit=limit,
             offset=offset,
             status=status,
@@ -70,13 +77,15 @@ class FindingService:
         cmap = self._cve_map(ids)
         return [self.to_out(f, cmap) for f in rows], total
 
-    def get(self, finding_id: uuid.UUID) -> FindingOut | None:
-        f = self.repo.get_by_id(finding_id)
+    def get(self, finding_id: uuid.UUID, tenant_id: uuid.UUID) -> FindingOut | None:
+        f = self.repo.get_by_id(finding_id, tenant_id=tenant_id)
         if not f:
             return None
         return self.to_out(f)
 
-    def create(self, data: FindingCreate, *, actor_id: uuid.UUID | None) -> FindingOut:
+    def create(
+        self, data: FindingCreate, *, actor_id: uuid.UUID | None, tenant_id: uuid.UUID
+    ) -> FindingOut:
         asset_id = uuid.UUID(data.asset_id)
         cve_record_id: uuid.UUID | None = None
         if data.cve_record_id:
@@ -89,13 +98,15 @@ class FindingService:
         else:
             raise ValueError("cve_record_id or cve_id required")
 
-        if self.db.get(Asset, asset_id) is None:
+        asset = self.db.get(Asset, asset_id)
+        if asset is None or asset.tenant_id != tenant_id:
             raise ValueError("Asset not found")
 
         existing = self.db.execute(
             select(VulnerabilityFinding).where(
                 VulnerabilityFinding.asset_id == asset_id,
                 VulnerabilityFinding.cve_record_id == cve_record_id,
+                VulnerabilityFinding.tenant_id == tenant_id,
             )
         ).scalar_one_or_none()
         if existing:
@@ -109,6 +120,7 @@ class FindingService:
         )
 
         row = VulnerabilityFinding(
+            tenant_id=tenant_id,
             asset_id=asset_id,
             cve_record_id=cve_record_id,
             status=data.status,
@@ -118,6 +130,30 @@ class FindingService:
             assigned_to_user_id=assigned,
         )
         self.repo.create(row)
+        
+        # Auto-calculate risk score
+        try:
+            risk_service = RiskEngineService(self.db)
+            cve = self.db.get(CveRecord, cve_record_id)
+            if asset and cve:
+                calc = risk_service.calculate_risk(row, asset, cve, use_ml=False)
+                from decimal import Decimal
+                row.risk_score = Decimal(str(calc.risk_score))
+                row.risk_factors = {
+                    "cvss": calc.factors.cvss_score,
+                    "criticality": calc.factors.criticality_score,
+                    "exposure": calc.factors.exposure_score,
+                    "exploit": calc.factors.exploit_score,
+                    "age": calc.factors.age_score,
+                    "rule_based_score": calc.rule_based_score,
+                    "contributing_factors": calc.contributing_factors,
+                    "calculation_method": calc.calculation_method,
+                }
+                row.risk_calculated_at = calc.calculated_at
+        except Exception:
+            # Risk calculation failure shouldn't block finding creation
+            pass
+        
         self.audit.record(
             actor_user_id=actor_id,
             action="finding.create",
@@ -130,9 +166,14 @@ class FindingService:
         return self.to_out(row)
 
     def update(
-        self, finding_id: uuid.UUID, data: FindingUpdate, *, actor_id: uuid.UUID | None
+        self,
+        finding_id: uuid.UUID,
+        data: FindingUpdate,
+        *,
+        actor_id: uuid.UUID | None,
+        tenant_id: uuid.UUID,
     ) -> FindingOut | None:
-        f = self.repo.get_by_id(finding_id)
+        f = self.repo.get_by_id(finding_id, tenant_id=tenant_id)
         if not f:
             return None
         before = {"status": f.status}
@@ -153,6 +194,13 @@ class FindingService:
                 f.assigned_to_user_id = uuid.UUID(str(raw).strip())
         if "internal_priority_score" in patch and patch["internal_priority_score"] is not None:
             f.internal_priority_score = patch["internal_priority_score"]
+
+        # Keep ticketing integration consistent with remediation lifecycle.
+        if f.status in {"REMEDIATED", "CLOSED"}:
+            TicketingService(self.db, tenant_id=tenant_id).close_tickets_for_finding(
+                finding_id=f.id,
+                actor_user_id=actor_id,
+            )
         self.db.flush()
         self.audit.record(
             actor_user_id=actor_id,
@@ -165,8 +213,10 @@ class FindingService:
         self.db.refresh(f)
         return self.to_out(f)
 
-    def delete(self, finding_id: uuid.UUID, *, actor_id: uuid.UUID | None) -> bool:
-        f = self.repo.get_by_id(finding_id)
+    def delete(
+        self, finding_id: uuid.UUID, *, actor_id: uuid.UUID | None, tenant_id: uuid.UUID
+    ) -> bool:
+        f = self.repo.get_by_id(finding_id, tenant_id=tenant_id)
         if not f:
             return False
         fid = str(f.id)

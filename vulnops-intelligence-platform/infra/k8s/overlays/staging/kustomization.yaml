@@ -1,27 +1,27 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: vulnops
-
-resources:
-  - ../../namespace.yaml
-  - ../../configmap-api.yaml
-  - ../../deployment-api.yaml
-  - ../../service-api.yaml
-  - ../../deployment-web.yaml
-  - ../../service-web.yaml
-  - ../../hpa-api.yaml
-  - ../../ingress.yaml
-  - ../../networkpolicy-api.yaml
-  - ../../networkpolicy-web.yaml
-
-images:
-  - name: ghcr.io/example/vulnops-api
-    newName: ghcr.io/example/vulnops-api
-    newTag: staging
-  - name: ghcr.io/example/vulnops-web
-    newName: ghcr.io/example/vulnops-web
-    newTag: staging
-
-patches:
-  - path: patch-hpa-staging.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aegiscore
+
+resources:
+  - ../../namespace.yaml
+  - ../../configmap-api.yaml
+  - ../../deployment-api.yaml
+  - ../../service-api.yaml
+  - ../../deployment-web.yaml
+  - ../../service-web.yaml
+  - ../../hpa-api.yaml
+  - ../../ingress.yaml
+  - ../../networkpolicy-api.yaml
+  - ../../networkpolicy-web.yaml
+
+images:
+  - name: ghcr.io/example/aegiscore-api
+    newName: ghcr.io/example/aegiscore-api
+    newTag: staging
+  - name: ghcr.io/example/aegiscore-web
+    newName: ghcr.io/example/aegiscore-web
+    newTag: staging
+
+patches:
+  - path: patch-hpa-staging.yaml

@@ -1,1 +1,1 @@
-"""VulnOps backend application package."""
+"""AegisCore backend application package."""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -32,3 +34,24 @@ class BusinessUnitRiskRow(BaseModel):
     business_unit_name: str
     open_findings: int
     critical_or_high: int
+
+
+class RiskTrendPoint(BaseModel):
+    date: date
+    opened_count: int
+    avg_risk_score: float | None
+
+
+class RiskTrendResponse(BaseModel):
+    days: int
+    points: list[RiskTrendPoint]
+
+
+class SlaForecastResponse(BaseModel):
+    overdue_now: int
+    due_next_7_days: int
+    due_next_14_days: int
+    resolved_last_14_days: int
+    projected_daily_resolve_rate: float
+    predicted_breaches_next_7_days: int
+    predicted_breaches_next_14_days: int

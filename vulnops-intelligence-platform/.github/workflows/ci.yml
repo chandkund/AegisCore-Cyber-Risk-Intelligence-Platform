@@ -1,245 +1,257 @@
-name: CI
-
-on:
-  push:
-  pull_request:
-
-permissions:
-  contents: read
-  security-events: write
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  backend-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install dev dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r backend/requirements.txt
-
-      - name: Ruff check
-        run: python -m ruff check backend/app backend/tests data_pipeline ml scripts
-
-      - name: Ruff format
-        run: python -m ruff format --check backend/app backend/tests data_pipeline ml scripts
-
-      - name: Mypy (app package)
-        working-directory: backend
-        run: python -m mypy app
-
-  requirements-lock:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install pip-tools
-        run: |
-          python -m pip install -U pip
-          pip install "pip-tools>=7,<8"
-
-      - name: Verify pip-compile output matches committed lockfiles
-        working-directory: backend
-        run: |
-          python -m piptools compile requirements/base.in -o /tmp/base.txt --resolver=backtracking
-          diff -u requirements/base.txt /tmp/base.txt
-          python -m piptools compile requirements/dev.in -o /tmp/dev.txt --resolver=backtracking
-          diff -u requirements/dev.txt /tmp/dev.txt
-
-  backend-unit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r backend/requirements.txt
-
-      - name: Pytest (excludes integration per pytest.ini)
-        env:
-          DATABASE_URL: postgresql+psycopg://ci:ci@127.0.0.1:65432/ci_placeholder
-          JWT_SECRET_KEY: ci-jwt-secret-key-must-be-32-chars-min!
-        run: pytest
-
-  backend-migrations:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: vulnops
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U test -d vulnops"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/vulnops
-      JWT_SECRET_KEY: ci-jwt-secret-key-must-be-32-chars-min!
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements/base.txt
-
-      - name: Install backend runtime deps
-        run: |
-          python -m pip install -U pip
-          pip install -r backend/requirements/base.txt
-
-      - name: Alembic upgrade head
-        working-directory: backend
-        run: alembic upgrade head
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install, lint, unit test, build, E2E
-        env:
-          CI: true
-        run: |
-          npm ci
-          npm test
-          npm run lint
-          npm run build
-          npx playwright install --with-deps chromium
-          npm run test:e2e
-
-  docker-build:
-    runs-on: ubuntu-latest
-    env:
-      JWT_SECRET_KEY: ci-docker-build-jwt-secret-32chars-min!
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build API image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.api
-          push: false
-          load: true
-          tags: vulnops-api:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.frontend
-          push: false
-          load: true
-          tags: vulnops-web:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Trivy SARIF (API image)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: image
-          image-ref: vulnops-api:ci
-          format: sarif
-          output: trivy-api-image.sarif
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          exit-code: "0"
-
-      - name: Upload SARIF (API image)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-api-image.sarif
-          category: trivy-container-api
-
-      - name: Trivy SARIF (web image)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: image
-          image-ref: vulnops-web:ci
-          format: sarif
-          output: trivy-web-image.sarif
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          exit-code: "0"
-
-      - name: Upload SARIF (web image)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-web-image.sarif
-          category: trivy-container-web
-
-      - name: Trivy gate CRITICAL (API image)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: image
-          image-ref: vulnops-api:ci
-          severity: CRITICAL
-          exit-code: "1"
-
-      - name: Trivy gate CRITICAL (web image)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: image
-          image-ref: vulnops-web:ci
-          severity: CRITICAL
-          exit-code: "1"
-
-  security-fs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          # HIGH filesystem findings are often noisy on dev dependencies; fail on CRITICAL only.
-          severity: CRITICAL
-          exit-code: "1"
-          skip-dirs: frontend/node_modules,backend/.venv,.git
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r backend/requirements.txt
+
+      - name: Ruff check
+        run: python -m ruff check backend/app backend/tests data_pipeline ml scripts
+
+      - name: Ruff format
+        run: python -m ruff format --check backend/app backend/tests data_pipeline ml scripts
+
+      - name: Mypy (app package)
+        working-directory: backend
+        run: python -m mypy app
+
+  requirements-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install pip-tools
+        run: |
+          python -m pip install -U pip
+          pip install "pip-tools>=7,<8"
+
+      - name: Verify pip-compile output matches committed lockfiles
+        working-directory: backend
+        run: |
+          python -m piptools compile requirements/base.in -o /tmp/base.txt --resolver=backtracking
+          diff -u requirements/base.txt /tmp/base.txt
+          python -m piptools compile requirements/dev.in -o /tmp/dev.txt --resolver=backtracking
+          diff -u requirements/dev.txt /tmp/dev.txt
+
+  backend-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r backend/requirements.txt
+
+      - name: Pytest (excludes integration per pytest.ini)
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@127.0.0.1:65432/ci_placeholder
+          JWT_SECRET_KEY: ci-jwt-secret-key-must-be-32-chars-min!
+        run: pytest
+
+  backend-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: aegiscore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d aegiscore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/aegiscore
+      JWT_SECRET_KEY: ci-jwt-secret-key-must-be-32-chars-min!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements/base.txt
+
+      - name: Install backend runtime deps
+        run: |
+          python -m pip install -U pip
+          pip install -r backend/requirements/base.txt
+
+      - name: Alembic upgrade head
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Seed test data
+        working-directory: backend
+        run: |
+          cd ..
+          python scripts/seed_oltp.py
+
+      - name: Run integration tests
+        working-directory: backend
+        env:
+          AEGISCORE_TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/aegiscore
+        run: pytest -m integration
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install, lint, unit test, build, E2E
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm test
+          npm run lint
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+  docker-build:
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET_KEY: ci-docker-build-jwt-secret-32chars-min!
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: false
+          load: true
+          tags: aegiscore-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          push: false
+          load: true
+          tags: aegiscore-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy SARIF (API image)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: image
+          image-ref: aegiscore-api:ci
+          format: sarif
+          output: trivy-api-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          exit-code: "0"
+
+      - name: Upload SARIF (API image)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-api-image.sarif
+          category: trivy-container-api
+
+      - name: Trivy SARIF (web image)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: image
+          image-ref: aegiscore-web:ci
+          format: sarif
+          output: trivy-web-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          exit-code: "0"
+
+      - name: Upload SARIF (web image)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-web-image.sarif
+          category: trivy-container-web
+
+      - name: Trivy gate CRITICAL (API image)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: image
+          image-ref: aegiscore-api:ci
+          severity: CRITICAL
+          exit-code: "1"
+
+      - name: Trivy gate CRITICAL (web image)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: image
+          image-ref: aegiscore-web:ci
+          severity: CRITICAL
+          exit-code: "1"
+
+  security-fs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          # HIGH filesystem findings are often noisy on dev dependencies; fail on CRITICAL only.
+          severity: CRITICAL
+          exit-code: "1"
+          skip-dirs: frontend/node_modules,backend/.venv,.git

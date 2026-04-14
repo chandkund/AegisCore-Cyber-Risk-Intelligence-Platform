@@ -20,6 +20,7 @@ security = HTTPBearer(auto_error=False)
 @dataclass(frozen=True)
 class Principal:
     id: uuid.UUID
+    tenant_id: uuid.UUID
     email: str
     full_name: str
     roles: frozenset[str]
@@ -46,6 +47,7 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     try:
         uid = uuid.UUID(str(payload["sub"]))
+        tenant_id = uuid.UUID(str(payload["tid"]))
     except (KeyError, ValueError) as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject"
@@ -58,8 +60,13 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive"
         )
     role_names = frozenset(ur.role.name for ur in user.roles if ur.role is not None)
+    if user.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token tenant mismatch"
+        )
     return Principal(
         id=user.id,
+        tenant_id=user.tenant_id,
         email=user.email,
         full_name=user.full_name,
         roles=role_names,

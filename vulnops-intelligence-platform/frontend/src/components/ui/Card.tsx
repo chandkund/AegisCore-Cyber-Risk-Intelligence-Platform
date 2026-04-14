@@ -13,13 +13,13 @@ export function Card({
   return (
     <section
       className={cn(
-        "rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow-lg backdrop-blur-sm",
+        "app-panel",
         className
       )}
       aria-label={title || undefined}
     >
       {title ? (
-        <h2 className="mb-3 text-lg font-semibold text-slate-100">{title}</h2>
+        <h2 className="mb-3 text-lg font-semibold text-app-fg">{title}</h2>
       ) : null}
       {children}
     </section>

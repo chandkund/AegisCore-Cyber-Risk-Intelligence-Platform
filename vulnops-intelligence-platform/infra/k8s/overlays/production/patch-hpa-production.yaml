@@ -1,8 +1,8 @@
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: vulnops-api
-  namespace: vulnops
-spec:
-  minReplicas: 2
-  maxReplicas: 10
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aegiscore-api
+  namespace: aegiscore
+spec:
+  minReplicas: 2
+  maxReplicas: 10

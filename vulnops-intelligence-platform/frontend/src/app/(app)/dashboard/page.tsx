@@ -2,21 +2,27 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { Card } from "@/components/ui/Card";
-import { getAnalyticsSummary } from "@/lib/api";
-import type { AnalyticsSummary } from "@/types/api";
+import { TopRisksWidget } from "@/components/prioritization/TopRisksWidget";
+import { getAnalyticsSummary, getRiskTrend, getSlaForecast } from "@/lib/api";
+import type { AnalyticsSummary, RiskTrendResponse, SlaForecastResponse } from "@/types/api";
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState<AnalyticsSummary | null | undefined>(undefined);
+  const [trend, setTrend] = useState<RiskTrendResponse | null>(null);
+  const [sla, setSla] = useState<SlaForecastResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const s = await getAnalyticsSummary();
+      const [s, t, f] = await Promise.all([getAnalyticsSummary(), getRiskTrend(14), getSlaForecast()]);
       if (!cancelled) {
         if (!s) setErr("Could not load analytics summary.");
         setSummary(s ?? null);
+        setTrend(t);
+        setSla(f);
       }
     })();
     return () => {
@@ -82,6 +88,46 @@ export default function DashboardPage() {
           </ul>
         </Card>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Risk trend (14d)">
+          <div className="space-y-1 text-sm">
+            {(trend?.points ?? []).slice(-5).map((p) => (
+              <div key={p.date} className="flex justify-between text-slate-300">
+                <span>{p.date}</span>
+                <span className="font-mono">
+                  +{p.opened_count} / avg {p.avg_risk_score ? p.avg_risk_score.toFixed(1) : "—"}
+                </span>
+              </div>
+            ))}
+            {!trend?.points?.length ? <p className="text-slate-500">No trend points yet.</p> : null}
+          </div>
+        </Card>
+        <Card title="SLA forecast">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <p className="text-slate-300">
+              Due next 7d: <span className="font-mono text-slate-100">{sla?.due_next_7_days ?? "—"}</span>
+            </p>
+            <p className="text-slate-300">
+              Due next 14d: <span className="font-mono text-slate-100">{sla?.due_next_14_days ?? "—"}</span>
+            </p>
+            <p className="text-slate-300">
+              Breaches (7d):{" "}
+              <span className="font-mono text-amber-300">{sla?.predicted_breaches_next_7_days ?? "—"}</span>
+            </p>
+            <p className="text-slate-300">
+              Breaches (14d):{" "}
+              <span className="font-mono text-rose-300">{sla?.predicted_breaches_next_14_days ?? "—"}</span>
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Top Risks Widget */}
+      <div className="mt-6">
+        <TopRisksWidget />
+      </div>
+      <AssistantPanel />
       <div className="flex flex-wrap gap-3 text-sm">
         <Link href="/analytics" className="text-sky-400 hover:underline">
           Full analytics

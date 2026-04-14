@@ -6,6 +6,13 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
+# JSON encoders for complex types
+JSON_ENCODERS = {
+    datetime: lambda v: v.isoformat() if v else None,
+    Decimal: lambda v: str(v) if v is not None else None,
+}
+
+
 class FindingBase(BaseModel):
     status: str = Field(min_length=1, max_length=32)
     discovered_at: datetime
@@ -39,7 +46,10 @@ class FindingUpdate(BaseModel):
 
 
 class FindingOut(BaseModel):
-    model_config = {"from_attributes": True}
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": JSON_ENCODERS,
+    }
 
     id: str
     asset_id: str
@@ -51,6 +61,12 @@ class FindingOut(BaseModel):
     due_at: datetime | None
     assigned_to_user_id: str | None
     internal_priority_score: Decimal | None
+    
+    # Risk prioritization fields
+    risk_score: Decimal | None = Field(None, ge=0, le=100, description="Risk score 0-100")
+    risk_factors: dict | None
+    risk_calculated_at: datetime | None
+    
     notes: str | None
     created_at: datetime
     updated_at: datetime

@@ -82,7 +82,7 @@ export default function FindingsPage() {
             </label>
             <select
               id="status-filter"
-              className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-lg border border-slate-600 bg-white px-3 py-2 text-gray-900 [color-scheme:light] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               value={status}
               onChange={(e) => {
                 setStatus(e.target.value);

@@ -42,6 +42,26 @@ class UserRepository:
         rows = self.db.execute(stmt).unique().scalars().all()
         return rows, int(total)
 
+    def list_users_by_tenant(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[Sequence[User], int]:
+        total = (
+            self.db.scalar(
+                select(func.count()).select_from(User).where(User.tenant_id == tenant_id)
+            )
+            or 0
+        )
+        stmt = (
+            select(User)
+            .options(joinedload(User.roles).joinedload(UserRole.role))
+            .where(User.tenant_id == tenant_id)
+            .order_by(User.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = self.db.execute(stmt).unique().scalars().all()
+        return rows, int(total)
+
     def create(self, user: User) -> User:
         self.db.add(user)
         self.db.flush()

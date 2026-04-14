@@ -16,13 +16,13 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("", response_model=Paginated[UserOut])
 def list_users(
-    _: AdminDep,
+    principal: AdminDep,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
     svc = UserService(db)
-    rows, total = svc.list_users(limit=limit, offset=offset)
+    rows, total = svc.list_users(tenant_id=principal.tenant_id, limit=limit, offset=offset)
     return Paginated(
         items=[svc.to_out(u) for u in rows],
         total=total,
@@ -35,7 +35,7 @@ def list_users(
 def create_user(principal: AdminDep, body: UserCreate, db: Session = Depends(get_db)):
     svc = UserService(db)
     try:
-        user = svc.create(body)
+        user = svc.create(body, tenant_id=principal.tenant_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     AuditService(db).record(
@@ -46,25 +46,27 @@ def create_user(principal: AdminDep, body: UserCreate, db: Session = Depends(get
         payload={"email": user.email},
     )
     db.commit()
-    u = svc.get(user.id)
+    u = svc.get(user.id, principal.tenant_id)
     if not u:
         raise HTTPException(status_code=500, detail="User persist failed")
     return svc.to_out(u)
 
 
 @router.get("/{user_id}", response_model=UserOut)
-def get_user(_: AdminDep, user_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_user(principal: AdminDep, user_id: uuid.UUID, db: Session = Depends(get_db)):
     svc = UserService(db)
-    u = svc.get(user_id)
+    u = svc.get(user_id, principal.tenant_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return svc.to_out(u)
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def update_user(_: AdminDep, user_id: uuid.UUID, body: UserUpdate, db: Session = Depends(get_db)):
+def update_user(
+    principal: AdminDep, user_id: uuid.UUID, body: UserUpdate, db: Session = Depends(get_db)
+):
     svc = UserService(db)
-    u = svc.update(user_id, body)
+    u = svc.update(user_id, body, tenant_id=principal.tenant_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return svc.to_out(u)
@@ -72,14 +74,14 @@ def update_user(_: AdminDep, user_id: uuid.UUID, body: UserUpdate, db: Session =
 
 @router.post("/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def assign_role(
-    _: AdminDep,
+    principal: AdminDep,
     user_id: uuid.UUID,
     body: UserRoleAssign,
     db: Session = Depends(get_db),
 ):
     svc = UserService(db)
     try:
-        svc.assign_role(user_id, body.role_name.strip())
+        svc.assign_role(user_id, body.role_name.strip(), tenant_id=principal.tenant_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return Response(status_code=status.HTTP_204_NO_CONTENT)

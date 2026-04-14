@@ -12,12 +12,20 @@ from app.core.config import get_settings
 from app.ml.prioritizer import load_model_bundle
 from app.repositories.prioritization_repository import PrioritizationRepository
 
+# ML module path resolution - repo root must be in sys.path for ml.* imports
 _REPO = Path(__file__).resolve().parents[3]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from ml.features.engineering import rows_from_db_records  # noqa: E402
-from ml.inference.predict import explain_with_preprocess, predict_urgent_probability  # noqa: E402
+try:
+    from ml.features.engineering import rows_from_db_records  # noqa: E402
+    from ml.inference.predict import explain_with_preprocess, predict_urgent_probability  # noqa: E402
+except ImportError as e:
+    raise ImportError(
+        f"Failed to import ml modules. "
+        f"Ensure repo root ({_REPO}) is in PYTHONPATH. "
+        f"Original error: {e}"
+    ) from e
 
 
 class PrioritizationService:

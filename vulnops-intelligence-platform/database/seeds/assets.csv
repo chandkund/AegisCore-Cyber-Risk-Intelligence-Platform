@@ -1,4 +1,4 @@
-id,name,asset_type,hostname,ip_address,business_unit_code,team_name,criticality,owner_email
-c1000001-0000-4000-8000-000000000001,prod-api-01,server,api-01.internal,10.0.1.10,ENG,Platform Engineering,5,owner-eng@vulnops.local
-c1000001-0000-4000-8000-000000000002,prod-web-02,server,web-02.internal,10.0.1.11,ENG,Application Security,4,owner-web@vulnops.local
-c1000001-0000-4000-8000-000000000003,corp-hr-portal,app,hr.corp.local,10.0.2.5,CORP,,2,hr-ops@vulnops.local
+id,name,asset_type,hostname,ip_address,business_unit_code,team_name,criticality,owner_email
+c1000001-0000-4000-8000-000000000001,prod-api-01,server,api-01.internal,10.0.1.10,ENG,Platform Engineering,5,owner-eng@aegiscore.local
+c1000001-0000-4000-8000-000000000002,prod-web-02,server,web-02.internal,10.0.1.11,ENG,Application Security,4,owner-web@aegiscore.local
+c1000001-0000-4000-8000-000000000003,corp-hr-portal,app,hr.corp.local,10.0.2.5,CORP,,2,hr-ops@aegiscore.local

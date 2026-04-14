@@ -16,6 +16,7 @@ class FindingRepository:
     def list_findings(
         self,
         *,
+        tenant_id: uuid.UUID,
         limit: int,
         offset: int,
         status: str | None = None,
@@ -25,6 +26,8 @@ class FindingRepository:
     ) -> tuple[Sequence[VulnerabilityFinding], int]:
         id_subq = select(VulnerabilityFinding.id)
         list_stmt = select(VulnerabilityFinding)
+        id_subq = id_subq.where(VulnerabilityFinding.tenant_id == tenant_id)
+        list_stmt = list_stmt.where(VulnerabilityFinding.tenant_id == tenant_id)
 
         if status:
             id_subq = id_subq.where(VulnerabilityFinding.status == status)
@@ -57,8 +60,13 @@ class FindingRepository:
         rows = self.db.execute(list_stmt).scalars().all()
         return rows, total
 
-    def get_by_id(self, finding_id: uuid.UUID) -> VulnerabilityFinding | None:
-        return self.db.get(VulnerabilityFinding, finding_id)
+    def get_by_id(
+        self, finding_id: uuid.UUID, tenant_id: uuid.UUID | None = None
+    ) -> VulnerabilityFinding | None:
+        stmt = select(VulnerabilityFinding).where(VulnerabilityFinding.id == finding_id)
+        if tenant_id is not None:
+            stmt = stmt.where(VulnerabilityFinding.tenant_id == tenant_id)
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def create(self, row: VulnerabilityFinding) -> VulnerabilityFinding:
         self.db.add(row)

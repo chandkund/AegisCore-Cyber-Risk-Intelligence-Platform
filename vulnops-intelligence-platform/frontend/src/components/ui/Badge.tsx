@@ -1,14 +1,14 @@
 import { cn } from "@/lib/utils";
 
 const tones: Record<string, string> = {
-  CRITICAL: "bg-rose-950 text-rose-200 ring-rose-800",
-  HIGH: "bg-orange-950 text-orange-200 ring-orange-800",
-  MEDIUM: "bg-amber-950 text-amber-200 ring-amber-800",
-  LOW: "bg-emerald-950 text-emerald-200 ring-emerald-800",
-  INFO: "bg-slate-700 text-slate-200 ring-slate-600",
-  OPEN: "bg-sky-950 text-sky-200 ring-sky-800",
-  IN_PROGRESS: "bg-violet-950 text-violet-200 ring-violet-800",
-  REMEDIATED: "bg-emerald-950 text-emerald-200 ring-emerald-800",
+  CRITICAL: "bg-rose-500/15 text-rose-300 ring-rose-500/30",
+  HIGH: "bg-orange-500/15 text-orange-300 ring-orange-500/30",
+  MEDIUM: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+  LOW: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
+  INFO: "bg-slate-500/20 text-slate-200 ring-slate-400/30",
+  OPEN: "bg-sky-500/15 text-sky-300 ring-sky-500/30",
+  IN_PROGRESS: "bg-violet-500/15 text-violet-300 ring-violet-500/30",
+  REMEDIATED: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
 };
 
 export function Badge({ children, tone }: { children: string; tone?: string }) {
@@ -17,7 +17,7 @@ export function Badge({ children, tone }: { children: string; tone?: string }) {
     <span
       className={cn(
         "inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
-        tones[t] || "bg-slate-800 text-slate-300 ring-slate-600"
+        tones[t] || "bg-surface-muted text-app-fg ring-app-border"
       )}
     >
       {children}

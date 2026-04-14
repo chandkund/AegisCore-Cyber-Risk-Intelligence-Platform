@@ -1,68 +1,82 @@
-# Local / demo stack: PostgreSQL + API + Next.js.
-# Usage: copy .env.example to .env and adjust secrets, or set variables in the shell.
-#   docker compose up --build
-#
-# API runs Alembic on startup, then uvicorn. Default ML inference is off until an artifact is mounted.
-
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-vulnops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vulnops_local_dev_only}
-      POSTGRES_DB: ${POSTGRES_DB:-vulnops}
-    ports:
-      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
-    volumes:
-      - vulnops_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-    ports:
-      - "${API_PUBLISH_PORT:-8000}:8000"
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vulnops:vulnops_local_dev_only@postgres:5432/vulnops}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-docker-compose-local-jwt-secret-32chars!!}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_JSON: ${LOG_JSON:-true}
-      ML_INFERENCE_ENABLED: ${ML_INFERENCE_ENABLED:-false}
-      ML_MODEL_PATH: ${ML_MODEL_PATH:-ml/models/artifacts/risk_prioritization.joblib}
-      PROMETHEUS_METRICS_ENABLED: ${PROMETHEUS_METRICS_ENABLED:-false}
-      APP_ENV: ${APP_ENV:-development}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=5)"',
-        ]
-      interval: 15s
-      timeout: 10s
-      retries: 8
-      start_period: 90s
-
-  web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
-    ports:
-      - "${WEB_PUBLISH_PORT:-3000}:3000"
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-    depends_on:
-      api:
-        condition: service_healthy
-
-volumes:
-  vulnops_pgdata:
+version: "3.9"
+
+# Local / demo stack: PostgreSQL + API + Next.js
+# Usage:
+#   1. copy .env.example to .env
+#   2. set required secrets
+#   3. run: docker compose up --build
+#
+# Notes:
+# - API runs Alembic on startup, then uvicorn
+# - ML inference is off by default until model artifacts are mounted
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aegiscore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegiscore_local_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-aegiscore}
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    volumes:
+      - aegiscore_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "${API_PUBLISH_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://aegiscore:aegiscore_local_dev_only@postgres:5432/aegiscore}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
+      ML_INFERENCE_ENABLED: ${ML_INFERENCE_ENABLED:-false}
+      ML_MODEL_PATH: ${ML_MODEL_PATH:-ml/models/artifacts/risk_prioritization.joblib}
+      PROMETHEUS_METRICS_ENABLED: ${PROMETHEUS_METRICS_ENABLED:-false}
+      APP_ENV: ${APP_ENV:-development}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - aegiscore_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else sys.exit(1)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "${WEB_PUBLISH_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  aegiscore_pgdata:
+  aegiscore_uploads:

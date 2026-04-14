@@ -9,6 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        app: {
+          bg: "rgb(var(--bg) / <alpha-value>)",
+          fg: "rgb(var(--fg) / <alpha-value>)",
+          border: "rgb(var(--border) / <alpha-value>)",
+        },
         surface: {
           DEFAULT: "rgb(var(--surface) / <alpha-value>)",
           muted: "rgb(var(--surface-muted) / <alpha-value>)",

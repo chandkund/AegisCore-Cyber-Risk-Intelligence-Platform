@@ -32,6 +32,7 @@ def create_access_token(
     *,
     subject: uuid.UUID,
     roles: list[str],
+    tenant_id: uuid.UUID,
     expires_delta: timedelta | None = None,
 ) -> str:
     settings = get_settings()
@@ -43,6 +44,7 @@ def create_access_token(
     )
     payload: dict[str, Any] = {
         "sub": str(subject),
+        "tid": str(tenant_id),
         "roles": roles,
         "typ": "access",
         "iat": int(now.timestamp()),
@@ -57,5 +59,5 @@ def decode_access_token(token: str) -> dict[str, Any]:
         token,
         settings.jwt_secret_key,
         algorithms=[settings.jwt_algorithm],
-        options={"require": ["exp", "sub", "typ"]},
+        options={"require": ["exp", "sub", "typ", "tid"]},
     )

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/findings", tags=["findings"])
 
 @router.get("", response_model=Paginated[FindingOut])
 def list_findings(
-    _: ReaderDep,
+    principal: ReaderDep,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -25,6 +25,7 @@ def list_findings(
     q: str | None = Query(None, description="Search notes, CVE id, title"),
 ):
     items, total = FindingService(db).list_findings(
+        tenant_id=principal.tenant_id,
         limit=limit,
         offset=offset,
         status=status_filter,
@@ -36,8 +37,8 @@ def list_findings(
 
 
 @router.get("/{finding_id}", response_model=FindingOut)
-def get_finding(_: ReaderDep, finding_id: uuid.UUID, db: Session = Depends(get_db)):
-    row = FindingService(db).get(finding_id)
+def get_finding(principal: ReaderDep, finding_id: uuid.UUID, db: Session = Depends(get_db)):
+    row = FindingService(db).get(finding_id, principal.tenant_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
     return row
@@ -46,7 +47,9 @@ def get_finding(_: ReaderDep, finding_id: uuid.UUID, db: Session = Depends(get_d
 @router.post("", response_model=FindingOut, status_code=status.HTTP_201_CREATED)
 def create_finding(principal: WriterDep, body: FindingCreate, db: Session = Depends(get_db)):
     try:
-        return FindingService(db).create(body, actor_id=principal.id)
+        return FindingService(db).create(
+            body, actor_id=principal.id, tenant_id=principal.tenant_id
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -58,7 +61,9 @@ def update_finding(
     body: FindingUpdate,
     db: Session = Depends(get_db),
 ):
-    row = FindingService(db).update(finding_id, body, actor_id=principal.id)
+    row = FindingService(db).update(
+        finding_id, body, actor_id=principal.id, tenant_id=principal.tenant_id
+    )
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
     return row
@@ -70,7 +75,9 @@ def update_finding(
     response_class=Response,
 )
 def delete_finding(principal: AdminDep, finding_id: uuid.UUID, db: Session = Depends(get_db)):
-    ok = FindingService(db).delete(finding_id, actor_id=principal.id)
+    ok = FindingService(db).delete(
+        finding_id, actor_id=principal.id, tenant_id=principal.tenant_id
+    )
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

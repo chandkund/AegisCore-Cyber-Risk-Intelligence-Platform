@@ -1,1 +1,1 @@
-"""Batch ETL/ELT jobs and validation for VulnOps."""
+"""Batch ETL/ELT jobs and validation for AegisCore."""

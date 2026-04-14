@@ -26,18 +26,26 @@ class UserService:
             roles=roles,
         )
 
-    def list_users(self, *, limit: int, offset: int) -> tuple[list[User], int]:
-        rows, total = self.repo.list_users(limit=limit, offset=offset)
+    def list_users(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[User], int]:
+        rows, total = self.repo.list_users_by_tenant(
+            tenant_id=tenant_id, limit=limit, offset=offset
+        )
         return list(rows), total
 
-    def get(self, user_id: uuid.UUID) -> User | None:
-        return self.repo.get_by_id(user_id)
+    def get(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> User | None:
+        user = self.repo.get_by_id(user_id)
+        if not user or user.tenant_id != tenant_id:
+            return None
+        return user
 
-    def create(self, data: UserCreate) -> User:
+    def create(self, data: UserCreate, *, tenant_id: uuid.UUID) -> User:
         email = data.email.strip().lower()
         if self.repo.get_by_email(email):
             raise ValueError("Email already registered")
         user = User(
+            tenant_id=tenant_id,
             email=email,
             hashed_password=hash_password(data.password),
             full_name=data.full_name.strip(),
@@ -45,11 +53,11 @@ class UserService:
         )
         self.repo.create(user)
         self.db.commit()
-        reloaded = self.repo.get_by_id(user.id)
+        reloaded = self.get(user.id, tenant_id)
         return reloaded or user
 
-    def update(self, user_id: uuid.UUID, data: UserUpdate) -> User | None:
-        user = self.repo.get_by_id(user_id)
+    def update(self, user_id: uuid.UUID, data: UserUpdate, *, tenant_id: uuid.UUID) -> User | None:
+        user = self.get(user_id, tenant_id)
         if not user:
             return None
         if data.full_name is not None:
@@ -62,8 +70,8 @@ class UserService:
         self.db.refresh(user)
         return user
 
-    def assign_role(self, user_id: uuid.UUID, role_name: str) -> None:
-        user = self.repo.get_by_id(user_id)
+    def assign_role(self, user_id: uuid.UUID, role_name: str, *, tenant_id: uuid.UUID) -> None:
+        user = self.get(user_id, tenant_id)
         if not user:
             raise ValueError("User not found")
         role = self.repo.get_role_by_name(role_name)

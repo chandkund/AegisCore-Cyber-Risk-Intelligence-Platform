@@ -62,6 +62,7 @@ def logout(body: LogoutRequest, db: Session = Depends(get_db)):
 def me(principal: Principal = Depends(get_current_user)):
     return MeResponse(
         id=str(principal.id),
+        tenant_id=str(principal.tenant_id),
         email=principal.email,
         full_name=principal.full_name,
         roles=sorted(principal.roles),

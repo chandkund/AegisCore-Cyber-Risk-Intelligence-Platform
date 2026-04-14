@@ -5,11 +5,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# ML module path resolution - repo root must be in sys.path for ml.* imports
+# This works in Docker where backend/ and ml/ are siblings under /app
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from ml.inference.predict import load_bundle  # noqa: E402
+try:
+    from ml.inference.predict import load_bundle  # noqa: E402
+except ImportError as e:
+    raise ImportError(
+        f"Failed to import ml.inference.predict. "
+        f"Ensure repo root ({_REPO_ROOT}) is in PYTHONPATH. "
+        f"Original error: {e}"
+    ) from e
 
 
 @functools.lru_cache(maxsize=8)

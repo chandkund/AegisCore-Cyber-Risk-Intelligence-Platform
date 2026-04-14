@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
+
+
+# JSON encoders for complex types
+JSON_ENCODERS = {
+    datetime: lambda v: v.isoformat() if v else None,
+    Decimal: lambda v: str(v) if v is not None else None,
+}
 
 
 class AssetCreate(BaseModel):
@@ -32,7 +40,10 @@ class AssetUpdate(BaseModel):
 
 
 class AssetOut(BaseModel):
-    model_config = {"from_attributes": True}
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": JSON_ENCODERS,
+    }
 
     id: str
     name: str

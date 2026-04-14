@@ -36,6 +36,7 @@ class AssetService:
     def list_assets(
         self,
         *,
+        tenant_id: uuid.UUID,
         limit: int,
         offset: int,
         business_unit_id: uuid.UUID | None,
@@ -43,6 +44,7 @@ class AssetService:
         is_active: bool | None,
     ) -> tuple[list[AssetOut], int]:
         rows, total = self.repo.list_assets(
+            tenant_id=tenant_id,
             limit=limit,
             offset=offset,
             business_unit_id=business_unit_id,
@@ -51,12 +53,13 @@ class AssetService:
         )
         return [self.to_out(a) for a in rows], total
 
-    def get(self, asset_id: uuid.UUID) -> AssetOut | None:
-        a = self.repo.get_by_id(asset_id)
+    def get(self, asset_id: uuid.UUID, tenant_id: uuid.UUID) -> AssetOut | None:
+        a = self.repo.get_by_id(asset_id, tenant_id=tenant_id)
         return self.to_out(a) if a else None
 
-    def create(self, data: AssetCreate, *, actor_id: uuid.UUID | None) -> AssetOut:
+    def create(self, data: AssetCreate, *, actor_id: uuid.UUID | None, tenant_id: uuid.UUID) -> AssetOut:
         row = Asset(
+            tenant_id=tenant_id,
             name=data.name.strip(),
             asset_type=data.asset_type.strip(),
             hostname=data.hostname.strip() if data.hostname else None,
@@ -80,9 +83,14 @@ class AssetService:
         return self.to_out(row)
 
     def update(
-        self, asset_id: uuid.UUID, data: AssetUpdate, *, actor_id: uuid.UUID | None
+        self,
+        asset_id: uuid.UUID,
+        data: AssetUpdate,
+        *,
+        actor_id: uuid.UUID | None,
+        tenant_id: uuid.UUID,
     ) -> AssetOut | None:
-        a = self.repo.get_by_id(asset_id)
+        a = self.repo.get_by_id(asset_id, tenant_id=tenant_id)
         if not a:
             return None
         patch = data.model_dump(exclude_unset=True)

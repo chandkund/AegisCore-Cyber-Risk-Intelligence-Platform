@@ -1,1 +1,1 @@
-"""VulnOps ML: risk prioritization training and inference."""
+"""AegisCore ML: risk prioritization training and inference."""

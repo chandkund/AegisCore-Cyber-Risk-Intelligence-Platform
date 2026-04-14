@@ -28,7 +28,7 @@ class AuthService:
             raise ValueError("Invalid credentials")
         roles = [ur.role.name for ur in user.roles if ur.role is not None]
         settings = get_settings()
-        access = create_access_token(subject=user.id, roles=roles)
+        access = create_access_token(subject=user.id, roles=roles, tenant_id=user.tenant_id)
         plain = generate_refresh_plain()
         th = hash_refresh_token(plain)
         exp = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
@@ -48,7 +48,7 @@ class AuthService:
         self.tokens.revoke(row.id)
         roles = [ur.role.name for ur in user.roles if ur.role is not None]
         settings = get_settings()
-        access = create_access_token(subject=user.id, roles=roles)
+        access = create_access_token(subject=user.id, roles=roles, tenant_id=user.tenant_id)
         plain = generate_refresh_plain()
         new_hash = hash_refresh_token(plain)
         exp = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)

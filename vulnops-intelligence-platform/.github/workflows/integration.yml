@@ -1,60 +1,60 @@
-# Full-stack integration tests (PostgreSQL + Alembic + seeds + pytest -m integration).
-# Runs on a schedule and manual dispatch to control CI cost. Enable `push` to `main` if desired.
-
-name: Integration
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 7 * * 3"
-
-concurrency:
-  group: integration-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  postgres-integration:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: vulnops
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U test -d vulnops"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-
-    env:
-      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/vulnops
-      VULNOPS_TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/vulnops
-      JWT_SECRET_KEY: integration-ci-jwt-secret-key-32chars-min!
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r backend/requirements.txt
-
-      - name: Alembic migrate
-        working-directory: backend
-        run: alembic upgrade head
-
-      - name: Seed OLTP
-        run: python scripts/seed_oltp.py
-
-      - name: Pytest integration only
-        run: pytest -m integration
+# Full-stack integration tests (PostgreSQL + Alembic + seeds + pytest -m integration).
+# Runs on a schedule and manual dispatch to control CI cost. Enable `push` to `main` if desired.
+
+name: Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 3"
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: aegiscore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d aegiscore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/aegiscore
+      AEGISCORE_TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/aegiscore
+      JWT_SECRET_KEY: integration-ci-jwt-secret-key-32chars-min!
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r backend/requirements.txt
+
+      - name: Alembic migrate
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Seed OLTP
+        run: python scripts/seed_oltp.py
+
+      - name: Pytest integration only
+        run: pytest -m integration

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 @router.get("", response_model=Paginated[AssetOut])
 def list_assets(
-    _: ReaderDep,
+    principal: ReaderDep,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -24,6 +24,7 @@ def list_assets(
     is_active: bool | None = Query(True),
 ):
     items, total = AssetService(db).list_assets(
+        tenant_id=principal.tenant_id,
         limit=limit,
         offset=offset,
         business_unit_id=business_unit_id,
@@ -34,8 +35,8 @@ def list_assets(
 
 
 @router.get("/{asset_id}", response_model=AssetOut)
-def get_asset(_: ReaderDep, asset_id: uuid.UUID, db: Session = Depends(get_db)):
-    row = AssetService(db).get(asset_id)
+def get_asset(principal: ReaderDep, asset_id: uuid.UUID, db: Session = Depends(get_db)):
+    row = AssetService(db).get(asset_id, principal.tenant_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     return row
@@ -44,7 +45,7 @@ def get_asset(_: ReaderDep, asset_id: uuid.UUID, db: Session = Depends(get_db)):
 @router.post("", response_model=AssetOut, status_code=status.HTTP_201_CREATED)
 def create_asset(principal: WriterDep, body: AssetCreate, db: Session = Depends(get_db)):
     try:
-        return AssetService(db).create(body, actor_id=principal.id)
+        return AssetService(db).create(body, actor_id=principal.id, tenant_id=principal.tenant_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -56,7 +57,9 @@ def update_asset(
     body: AssetUpdate,
     db: Session = Depends(get_db),
 ):
-    row = AssetService(db).update(asset_id, body, actor_id=principal.id)
+    row = AssetService(db).update(
+        asset_id, body, actor_id=principal.id, tenant_id=principal.tenant_id
+    )
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     return row

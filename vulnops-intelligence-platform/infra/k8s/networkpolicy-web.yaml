@@ -1,41 +1,41 @@
-# Next.js pods: ingress from ingress only; egress DNS + optional in-cluster API (SSR/BFF).
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: vulnops-web
-  namespace: vulnops
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: vulnops-web
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 3000
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: vulnops-api
-      ports:
-        - protocol: TCP
-          port: 8000
+# Next.js pods: ingress from ingress only; egress DNS + optional in-cluster API (SSR/BFF).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aegiscore-web
+  namespace: aegiscore
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: aegiscore-web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aegiscore-api
+      ports:
+        - protocol: TCP
+          port: 8000

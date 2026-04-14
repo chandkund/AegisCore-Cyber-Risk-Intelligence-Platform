@@ -5,6 +5,19 @@ ignore_missing_imports = true
 explicit_package_bases = true
 mypy_path = "."
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration (requires database)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
 # Used by `pip-compile` when run from `backend/` (CI + local lock refresh).
 [tool.pip-tools]
 generate_hashes = false
