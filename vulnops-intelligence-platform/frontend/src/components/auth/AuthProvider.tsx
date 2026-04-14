@@ -66,8 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await logoutRequest();
-    setUser(null);
+    try {
+      await logoutRequest();
+    } finally {
+      clearTokens();
+      setUser(null);
+    }
   }, []);
 
   const hasRole = useCallback(
