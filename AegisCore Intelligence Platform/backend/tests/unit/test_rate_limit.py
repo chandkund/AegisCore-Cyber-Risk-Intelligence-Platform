@@ -8,8 +8,9 @@ from app.middleware.login_rate_limit import allow_login_attempt, reset_for_tests
 
 
 @pytest.fixture(autouse=True)
-def reset_buckets():
+def reset_buckets(monkeypatch: pytest.MonkeyPatch):
     """Reset rate limit buckets before each test."""
+    monkeypatch.setenv("AEGISCORE_TEST_MODE", "false")
     reset_for_tests()
     yield
     reset_for_tests()

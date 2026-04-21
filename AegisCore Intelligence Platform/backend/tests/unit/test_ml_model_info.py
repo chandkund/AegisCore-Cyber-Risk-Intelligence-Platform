@@ -32,6 +32,7 @@ def test_metadata_with_bundle(monkeypatch, tmp_path: Path):
     joblib.dump({"pipeline": pipe, "metadata": meta}, p)
 
     monkeypatch.setenv("ML_MODEL_PATH", str(p))
+    monkeypatch.setenv("ML_INFERENCE_ENABLED", "true")
     reset_settings_cache()
     clear_bundle_cache()
 

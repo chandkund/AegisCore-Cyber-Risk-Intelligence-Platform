@@ -11,7 +11,7 @@ from app.services.analytics_service import AnalyticsService
 
 
 def _seed_analytics_data(db: Session, tenant_id: uuid.UUID, bu_code: str = "ENG") -> None:
-    bu = BusinessUnit(id=uuid.uuid4(), code=bu_code, name=f"Engineering-{bu_code}")
+    bu = BusinessUnit(id=uuid.uuid4(), tenant_id=tenant_id, code=bu_code, name=f"Engineering-{bu_code}")
     db.add(bu)
     db.flush()
     asset = Asset(
@@ -84,6 +84,7 @@ def _seed_analytics_data(db: Session, tenant_id: uuid.UUID, bu_code: str = "ENG"
 def test_risk_trend_and_sla_forecast(db: Session):
     tenant_id = uuid.UUID("00000000-0000-4000-8000-0000000000AA")
     db.add(Organization(id=tenant_id, name="Trend Org", code="trend-org"))
+    db.flush()  # Flush to satisfy FK constraint
     _seed_analytics_data(db, tenant_id)
 
     service = AnalyticsService(db)
@@ -101,12 +102,11 @@ def test_risk_trend_and_sla_forecast(db: Session):
 def test_analytics_tenant_isolation(db: Session):
     tenant_a = uuid.UUID("00000000-0000-4000-8000-0000000000AB")
     tenant_b = uuid.UUID("00000000-0000-4000-8000-0000000000AC")
-    db.add_all(
-        [
-            Organization(id=tenant_a, name="Org A", code="orga"),
-            Organization(id=tenant_b, name="Org B", code="orgb"),
-        ]
-    )
+    db.add_all([
+        Organization(id=tenant_a, name="Org A", code="orga"),
+        Organization(id=tenant_b, name="Org B", code="orgb"),
+    ])
+    db.flush()  # Flush to satisfy FK constraint
     _seed_analytics_data(db, tenant_a, bu_code="ENGA")
     _seed_analytics_data(db, tenant_b, bu_code="ENGB")
 

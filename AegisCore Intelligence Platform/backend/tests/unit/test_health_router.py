@@ -9,4 +9,4 @@ client = TestClient(app)
 def test_liveness_does_not_touch_database():
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    assert r.json()["status"] == "healthy"

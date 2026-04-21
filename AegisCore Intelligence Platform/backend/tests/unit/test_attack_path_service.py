@@ -20,7 +20,8 @@ from app.services.attack_path_service import AttackPathService
 def test_blast_radius_from_asset(db: Session):
     tenant_id = uuid.UUID("00000000-0000-4000-8000-0000000000BA")
     db.add(Organization(id=tenant_id, name="Attack Org", code="attack-org"))
-    bu = BusinessUnit(id=uuid.uuid4(), code="SECATTACK", name="Security")
+    db.flush()  # Flush to satisfy FK constraint
+    bu = BusinessUnit(id=uuid.uuid4(), tenant_id=tenant_id, code="SECATTACK", name="Security")
     db.add(bu)
     db.flush()
 
@@ -106,16 +107,16 @@ def test_blast_radius_from_asset(db: Session):
 def test_blast_radius_is_tenant_scoped(db: Session):
     tenant_a = uuid.UUID("00000000-0000-4000-8000-0000000000BB")
     tenant_b = uuid.UUID("00000000-0000-4000-8000-0000000000BC")
-    bua = BusinessUnit(id=uuid.uuid4(), code="SECATTA", name="Security A")
-    bub = BusinessUnit(id=uuid.uuid4(), code="SECATTB", name="Security B")
-    db.add_all(
-        [
-            Organization(id=tenant_a, name="Tenant A", code="tena"),
-            Organization(id=tenant_b, name="Tenant B", code="tenb"),
-            bua,
-            bub,
-        ]
-    )
+    # Add organizations first and flush to satisfy FK constraints
+    db.add_all([
+        Organization(id=tenant_a, name="Tenant A", code="tena"),
+        Organization(id=tenant_b, name="Tenant B", code="tenb"),
+    ])
+    db.flush()
+    # Now add BusinessUnits
+    bua = BusinessUnit(id=uuid.uuid4(), tenant_id=tenant_a, code="SECATTA", name="Security A")
+    bub = BusinessUnit(id=uuid.uuid4(), tenant_id=tenant_b, code="SECATTB", name="Security B")
+    db.add_all([bua, bub])
     db.flush()
 
     a_asset = Asset(

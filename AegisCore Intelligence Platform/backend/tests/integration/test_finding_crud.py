@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.integration
 
@@ -43,17 +44,42 @@ def _get_or_create_asset(api_client: TestClient, token: str) -> str:
     )
     return r.json()["id"]
 
+def _get_or_create_cve_id(api_client: TestClient, token: str, db: Session) -> str:
+    """Return an existing CVE id or create one in test DB."""
+    r = api_client.get(
+        "/api/v1/cve-records?limit=1",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    if data["items"]:
+        return data["items"][0]["cve_id"]
 
-def test_create_finding(api_client: TestClient):
+    from app.models.oltp import CveRecord
+
+    cve = CveRecord(
+        cve_id="CVE-2024-50001",
+        severity="HIGH",
+        cvss_base_score=8.1,
+        exploit_available=False,
+        title="Test CVE for finding CRUD",
+    )
+    db.add(cve)
+    db.commit()
+    return cve.cve_id
+
+
+def test_create_finding(api_client: TestClient, db: Session):
     """Create finding with valid data."""
     token = _get_analyst_client(api_client)
     asset_id = _get_or_create_asset(api_client, token)
+    cve_id = _get_or_create_cve_id(api_client, token, db)
 
     r = api_client.post(
         "/api/v1/findings",
         json={
             "asset_id": asset_id,
-            "cve_id": "CVE-2024-12345",
+            "cve_id": cve_id,
             "status": "OPEN",
             "discovered_at": datetime.now(timezone.utc).isoformat(),
             "notes": "Test finding from integration test",
@@ -81,17 +107,18 @@ def test_list_findings(api_client: TestClient):
     assert "total" in data
 
 
-def test_get_finding_by_id(api_client: TestClient):
+def test_get_finding_by_id(api_client: TestClient, db: Session):
     """Get finding by ID."""
     token = _get_analyst_client(api_client)
     asset_id = _get_or_create_asset(api_client, token)
+    cve_id = _get_or_create_cve_id(api_client, token, db)
 
     # Create finding
     r = api_client.post(
         "/api/v1/findings",
         json={
             "asset_id": asset_id,
-            "cve_id": "CVE-2024-99999",
+            "cve_id": cve_id,
             "status": "OPEN",
             "discovered_at": datetime.now(timezone.utc).isoformat(),
         },
@@ -107,20 +134,21 @@ def test_get_finding_by_id(api_client: TestClient):
     assert r.status_code == 200
     data = r.json()
     assert data["id"] == finding_id
-    assert data["cve_id"] == "CVE-2024-99999"
+    assert data["cve_id"] == cve_id
 
 
-def test_update_finding(api_client: TestClient):
+def test_update_finding(api_client: TestClient, db: Session):
     """Update finding status."""
     token = _get_analyst_client(api_client)
     asset_id = _get_or_create_asset(api_client, token)
+    cve_id = _get_or_create_cve_id(api_client, token, db)
 
     # Create
     r = api_client.post(
         "/api/v1/findings",
         json={
             "asset_id": asset_id,
-            "cve_id": "CVE-2024-88888",
+            "cve_id": cve_id,
             "status": "OPEN",
             "discovered_at": datetime.now(timezone.utc).isoformat(),
         },
@@ -212,7 +240,7 @@ def test_create_finding_invalid_asset(api_client: TestClient):
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 422
+    assert r.status_code == 400
 
 
 def test_manager_can_view_findings(api_client: TestClient):

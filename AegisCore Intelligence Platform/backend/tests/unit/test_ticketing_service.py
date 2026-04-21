@@ -30,7 +30,7 @@ from app.services.ticketing_service import TicketingService
 
 def _seed_finding(db: Session, tenant_id: uuid.UUID) -> VulnerabilityFinding:
 
-    bu = BusinessUnit(id=uuid.uuid4(), code=f"TKT{str(tenant_id.int)[-6:]}", name="Ticket BU")
+    bu = BusinessUnit(id=uuid.uuid4(), tenant_id=tenant_id, code=f"TKT{str(tenant_id.int)[-6:]}", name="Ticket BU")
 
     db.add(bu)
 
@@ -101,6 +101,7 @@ def test_create_and_sync_ticket(db: Session):
     tenant_id = uuid.UUID("00000000-0000-4000-8000-0000000000CA")
 
     db.add(Organization(id=tenant_id, name="Ticket Org", code="ticket-org"))
+    db.flush()  # Flush to satisfy FK constraint
 
     finding = _seed_finding(db, tenant_id)
 
@@ -159,6 +160,7 @@ def test_finding_remediation_auto_resolves_tickets(db: Session):
     tenant_id = uuid.UUID("00000000-0000-4000-8000-0000000000CB")
 
     db.add(Organization(id=tenant_id, name="Ticket Org 2", code="ticket-org-2"))
+    db.flush()  # Flush to satisfy FK constraint
 
     finding = _seed_finding(db, tenant_id)
 

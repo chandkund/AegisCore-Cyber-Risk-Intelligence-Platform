@@ -45,11 +45,14 @@ def auth_headers_analyst(api_client: TestClient) -> dict:
 @pytest.fixture
 def test_finding_with_risk(db: Session) -> VulnerabilityFinding:
     """Create a test finding with pre-calculated risk score."""
+    tenant_id = uuid.UUID("a0000000-0000-4000-8000-000000000002")
+    business_unit_id = uuid.UUID("a5000001-0000-4000-8000-000000000010")
     asset = Asset(
         id=uuid.uuid4(),
+        tenant_id=tenant_id,
         name="test-asset",
         asset_type="server",
-        business_unit_id=uuid.uuid4(),
+        business_unit_id=business_unit_id,
         criticality=1,
         is_external=True,
     )
@@ -62,6 +65,7 @@ def test_finding_with_risk(db: Session) -> VulnerabilityFinding:
     )
     finding = VulnerabilityFinding(
         id=uuid.uuid4(),
+        tenant_id=tenant_id,
         asset_id=asset.id,
         cve_record_id=cve.id,
         status="OPEN",
@@ -75,6 +79,10 @@ def test_finding_with_risk(db: Session) -> VulnerabilityFinding:
             "age": 0.33,
             "rule_based_score": 90.5,
             "calculation_method": "rule_based",
+            "contributing_factors": [
+                {"factor": "cvss", "score": 0.98, "impact": "high"},
+                {"factor": "exploit", "score": 1.0, "impact": "high"},
+            ],
         },
         risk_calculated_at=datetime.now(timezone.utc),
     )

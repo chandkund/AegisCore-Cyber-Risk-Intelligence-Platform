@@ -120,8 +120,8 @@ def test_update_asset(api_client: TestClient):
     assert data["criticality"] == 5
 
 
-def test_delete_asset(api_client: TestClient):
-    """Delete asset."""
+def test_deactivate_asset(api_client: TestClient):
+    """Deactivate asset via patch (hard delete not supported)."""
     token = _get_admin_client(api_client)
 
     # Create asset
@@ -137,19 +137,14 @@ def test_delete_asset(api_client: TestClient):
     )
     asset_id = r.json()["id"]
 
-    # Delete
-    r = api_client.delete(
+    # Deactivate
+    r = api_client.patch(
         f"/api/v1/assets/{asset_id}",
+        json={"is_active": False},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 204
-
-    # Verify deletion
-    r = api_client.get(
-        f"/api/v1/assets/{asset_id}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 404
+    assert r.status_code == 200
+    assert r.json()["is_active"] is False
 
 
 def test_create_asset_invalid_criticality(api_client: TestClient):

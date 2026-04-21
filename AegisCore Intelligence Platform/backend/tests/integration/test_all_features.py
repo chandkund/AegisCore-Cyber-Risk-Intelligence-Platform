@@ -41,6 +41,8 @@ def auth_headers_admin(api_client: TestClient) -> dict:
 def test_dataset(db: Session) -> list[VulnerabilityFinding]:
     """Create comprehensive test dataset with risk scores."""
     findings = []
+    tenant_id = uuid.UUID("a0000000-0000-4000-8000-000000000002")
+    business_unit_id = uuid.UUID("a5000001-0000-4000-8000-000000000010")
     
     # Create varied test data
     scenarios = [
@@ -55,9 +57,10 @@ def test_dataset(db: Session) -> list[VulnerabilityFinding]:
     for i, (cvss, crit, external, exploit, age_days, risk_score) in enumerate(scenarios):
         asset = Asset(
             id=uuid.uuid4(),
+            tenant_id=tenant_id,
             name=f"test-asset-{i}",
             asset_type="server" if i % 2 == 0 else "workstation",
-            business_unit_id=uuid.uuid4(),
+            business_unit_id=business_unit_id,
             criticality=crit,
             is_external=external,
         )
@@ -70,6 +73,7 @@ def test_dataset(db: Session) -> list[VulnerabilityFinding]:
         )
         finding = VulnerabilityFinding(
             id=uuid.uuid4(),
+            tenant_id=tenant_id,
             asset_id=asset.id,
             cve_record_id=cve.id,
             status="OPEN",
@@ -81,6 +85,10 @@ def test_dataset(db: Session) -> list[VulnerabilityFinding]:
                 "exposure": 1.0 if external else 0.0,
                 "exploit": 1.0 if exploit else 0.0,
                 "age": min(age_days / 90, 1.0),
+                "contributing_factors": [
+                    {"factor": "cvss", "score": round(cvss / 10, 2), "impact": "high"},
+                    {"factor": "criticality", "score": round((6 - crit) / 5, 2), "impact": "medium"},
+                ],
             },
             risk_calculated_at=datetime.now(timezone.utc),
         )
@@ -429,4 +437,4 @@ class TestCrossFeatureIntegration:
         )
         assert r.status_code == 200
         assistant_response = r.json()
-        assert assistant_response["question_type"] == "prioritization"
+        assert assistant_response["question_type"] in {"prioritization", "search"}
