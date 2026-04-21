@@ -4,138 +4,396 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { Card } from "@/components/ui/Card";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { EmptyStateUpload } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { TopRisksWidget } from "@/components/prioritization/TopRisksWidget";
-import { getAnalyticsSummary, getRiskTrend, getSlaForecast } from "@/lib/api";
-import type { AnalyticsSummary, RiskTrendResponse, SlaForecastResponse } from "@/types/api";
+import {
+  getAnalyticsSummary,
+  getRiskTrend,
+  getSlaForecast,
+} from "@/lib/api";
+import type {
+  AnalyticsSummary,
+  RiskTrendResponse,
+  SlaForecastResponse,
+} from "@/types/api";
+import {
+  Shield,
+  AlertTriangle,
+  AlertCircle,
+  FileWarning,
+  Activity,
+  Upload,
+} from "lucide-react";
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState<AnalyticsSummary | null | undefined>(undefined);
+  const [summary, setSummary] = useState<AnalyticsSummary | null | undefined>(
+    undefined
+  );
   const [trend, setTrend] = useState<RiskTrendResponse | null>(null);
   const [sla, setSla] = useState<SlaForecastResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const fetchData = async () => {
+    setIsRetrying(true);
+    setErr(null);
+    try {
+      const [s, t, f] = await Promise.all([
+        getAnalyticsSummary(),
+        getRiskTrend(14),
+        getSlaForecast(),
+      ]);
+      setSummary(s ?? null);
+      setTrend(t);
+      setSla(f);
+    } catch (error) {
+      setErr(
+        error instanceof Error ? error.message : "Failed to load dashboard data"
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [s, t, f] = await Promise.all([getAnalyticsSummary(), getRiskTrend(14), getSlaForecast()]);
-      if (!cancelled) {
-        if (!s) setErr("Could not load analytics summary.");
-        setSummary(s ?? null);
-        setTrend(t);
-        setSla(f);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    fetchData();
   }, []);
 
-  if (summary === undefined) {
+  // Loading state
+  if (summary === undefined && !err) {
     return (
-      <p className="text-slate-500" role="status">
-        Loading dashboard…
-      </p>
+      <div className="space-y-6">
+        <PageHeader
+          title="Security Dashboard"
+          description="Real-time overview of your security posture"
+        />
+        {/* KPI Skeletons */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <KpiCard key={i} title="Loading..." value="-" loading />
+          ))}
+        </div>
+        {/* Charts Skeletons */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card title="Risk Trend" className="h-[320px]" />
+          <Card title="Severity Distribution" className="h-[320px]" />
+        </div>
+      </div>
     );
   }
 
+  // Error state
+  if (err) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Security Dashboard"
+          description="Real-time overview of your security posture"
+        />
+        <ErrorState
+          title="Failed to load dashboard"
+          message={err}
+          onRetry={fetchData}
+        />
+      </div>
+    );
+  }
+
+  // Empty state - no data uploaded yet
+  const hasNoData =
+    !summary ||
+    (summary.total_open_findings === 0 &&
+      (!summary.by_severity || summary.by_severity.length === 0));
+
+  if (hasNoData) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Security Dashboard"
+          description="Real-time overview of your security posture"
+        />
+        <EmptyStateUpload
+          onUpload={() => (window.location.href = "/uploads")}
+        />
+      </div>
+    );
+  }
+
+  // Calculate severity counts
+  const severityCounts = {
+    critical:
+      summary?.by_severity?.find((s) => s.severity === "CRITICAL")?.count || 0,
+    high:
+      summary?.by_severity?.find((s) => s.severity === "HIGH")?.count || 0,
+    medium:
+      summary?.by_severity?.find((s) => s.severity === "MEDIUM")?.count || 0,
+    low:
+      summary?.by_severity?.find((s) => s.severity === "LOW")?.count || 0,
+  };
+
+  // Calculate trend direction
+  const trendPoints = trend?.points || [];
+  const recentTrend =
+    trendPoints.length >= 2
+      ? trendPoints[trendPoints.length - 1].opened_count -
+        trendPoints[trendPoints.length - 2].opened_count
+      : 0;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-100">Dashboard</h2>
-        <p className="mt-1 text-slate-400">Open findings and distribution at a glance.</p>
+      <PageHeader
+        title="Security Dashboard"
+        description="Real-time overview of your security posture"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchData}
+          disabled={isRetrying}
+          className="gap-2"
+        >
+          <Activity className="h-4 w-4" />
+          {isRetrying ? "Refreshing..." : "Refresh"}
+        </Button>
+        <Link href="/uploads">
+          <Button size="sm" className="gap-2">
+            <Upload className="h-4 w-4" />
+            Upload Data
+          </Button>
+        </Link>
+      </PageHeader>
+
+      {/* KPI Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          title="Total Findings"
+          value={summary?.total_open_findings?.toLocaleString() || "0"}
+          subtitle="Open vulnerabilities"
+          icon={<Shield className="h-5 w-5" />}
+          status="info"
+          trend={
+            recentTrend !== 0
+              ? {
+                  value: Math.abs(recentTrend),
+                  label: recentTrend > 0 ? "vs yesterday" : "vs yesterday",
+                  direction: recentTrend > 0 ? "up" : "down",
+                }
+              : undefined
+          }
+        />
+        <KpiCard
+          title="Critical Risk"
+          value={severityCounts.critical.toLocaleString()}
+          subtitle="Immediate attention required"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          status={severityCounts.critical > 0 ? "error" : "success"}
+        />
+        <KpiCard
+          title="High Risk"
+          value={severityCounts.high.toLocaleString()}
+          subtitle="Should be addressed soon"
+          icon={<AlertCircle className="h-5 w-5" />}
+          status={severityCounts.high > 0 ? "warning" : "success"}
+        />
+        <KpiCard
+          title="Risk Score"
+          value={trendPoints.length > 0 && trendPoints[trendPoints.length - 1].avg_risk_score
+            ? trendPoints[trendPoints.length - 1].avg_risk_score!.toFixed(1)
+            : "N/A"}
+          subtitle="Average across all findings"
+          icon={<FileWarning className="h-5 w-5" />}
+          status="neutral"
+        />
       </div>
-      {err ? (
-        <p className="text-rose-400" role="alert">
-          {err}
-        </p>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card title="Open findings">
-          <p className="text-3xl font-semibold text-sky-400">
-            {summary?.total_open_findings ?? "—"}
-          </p>
-          <Link
-            href="/findings"
-            className="mt-2 inline-block text-sm text-sky-400 hover:underline focus:underline"
-          >
-            View findings
-          </Link>
+
+      {/* Main Charts Section */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Risk Trend */}
+        <Card title="Risk Trend (14 Days)" className="relative">
+          {trend?.points && trend.points.length > 0 ? (
+            <div className="space-y-3">
+              {trend.points.slice(-7).map((point) => (
+                <div
+                  key={point.date}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span className="text-slate-400">{point.date}</span>
+                  <div className="flex items-center gap-4">
+                    <Badge variant="outline" className="font-mono">
+                      +{point.opened_count} new
+                    </Badge>
+                    <span className="text-slate-300 w-16 text-right">
+                      {point.avg_risk_score
+                        ? point.avg_risk_score.toFixed(1)
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              <div className="mt-4 border-t border-slate-700/50 pt-4">
+                <Link
+                  href="/analytics"
+                  className="text-sm text-sky-400 hover:text-sky-300"
+                >
+                  View full analytics →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              No trend data available. Upload findings to see trends.
+            </p>
+          )}
         </Card>
-        <Card title="By severity (open)">
-          <ul className="space-y-1 text-sm">
-            {(summary?.by_severity ?? []).map((row) => (
-              <li key={row.severity} className="flex justify-between gap-2">
-                <span className="text-slate-300">{row.severity}</span>
-                <span className="font-mono text-slate-400">{row.count}</span>
-              </li>
-            ))}
-            {!summary?.by_severity?.length ? (
-              <li className="text-slate-500">No data</li>
-            ) : null}
-          </ul>
-        </Card>
-        <Card title="By status">
-          <ul className="space-y-1 text-sm">
-            {(summary?.by_status ?? []).map((row) => (
-              <li key={row.status} className="flex justify-between gap-2">
-                <span className="text-slate-300">{row.status}</span>
-                <span className="font-mono text-slate-400">{row.count}</span>
-              </li>
-            ))}
-            {!summary?.by_status?.length ? (
-              <li className="text-slate-500">No data</li>
-            ) : null}
-          </ul>
+
+        {/* Severity Distribution */}
+        <Card title="Severity Distribution" className="relative">
+          <div className="space-y-3">
+            {severityCounts.critical > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
+                  <span className="text-sm text-slate-300">Critical</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2 flex-1 w-32 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-red-500 transition-all"
+                      style={{
+                        width: `${(severityCounts.critical / (summary?.total_open_findings || 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-sm font-mono text-slate-300">
+                    {severityCounts.critical}
+                  </span>
+                </div>
+              </div>
+            )}
+            {severityCounts.high > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-orange-500" />
+                  <span className="text-sm text-slate-300">High</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2 flex-1 w-32 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-orange-500 transition-all"
+                      style={{
+                        width: `${(severityCounts.high / (summary?.total_open_findings || 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-sm font-mono text-slate-300">
+                    {severityCounts.high}
+                  </span>
+                </div>
+              </div>
+            )}
+            {severityCounts.medium > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-amber-500" />
+                  <span className="text-sm text-slate-300">Medium</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2 flex-1 w-32 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-amber-500 transition-all"
+                      style={{
+                        width: `${(severityCounts.medium / (summary?.total_open_findings || 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-sm font-mono text-slate-300">
+                    {severityCounts.medium}
+                  </span>
+                </div>
+              </div>
+            )}
+            {severityCounts.low > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-emerald-500" />
+                  <span className="text-sm text-slate-300">Low</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2 flex-1 w-32 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{
+                        width: `${(severityCounts.low / (summary?.total_open_findings || 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-sm font-mono text-slate-300">
+                    {severityCounts.low}
+                  </span>
+                </div>
+              </div>
+            )}
+            {summary?.total_open_findings === 0 && (
+              <p className="text-sm text-slate-500">No open findings</p>
+            )}
+          </div>
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Risk trend (14d)">
-          <div className="space-y-1 text-sm">
-            {(trend?.points ?? []).slice(-5).map((p) => (
-              <div key={p.date} className="flex justify-between text-slate-300">
-                <span>{p.date}</span>
-                <span className="font-mono">
-                  +{p.opened_count} / avg {p.avg_risk_score ? p.avg_risk_score.toFixed(1) : "—"}
-                </span>
-              </div>
-            ))}
-            {!trend?.points?.length ? <p className="text-slate-500">No trend points yet.</p> : null}
+      {/* SLA Forecast */}
+      {sla && (
+        <Card title="SLA Forecast" className="relative">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500">Due Next 7 Days</p>
+              <p className="text-2xl font-semibold text-slate-200">
+                {sla.due_next_7_days}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500">Due Next 14 Days</p>
+              <p className="text-2xl font-semibold text-slate-200">
+                {sla.due_next_14_days}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500">Predicted Breaches (7d)</p>
+              <p
+                className={`text-2xl font-semibold ${
+                  (sla.predicted_breaches_next_7_days || 0) > 0
+                    ? "text-amber-400"
+                    : "text-emerald-400"
+                }`}
+              >
+                {sla.predicted_breaches_next_7_days || 0}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500">Predicted Breaches (14d)</p>
+              <p
+                className={`text-2xl font-semibold ${
+                  (sla.predicted_breaches_next_14_days || 0) > 0
+                    ? "text-rose-400"
+                    : "text-emerald-400"
+                }`}
+              >
+                {sla.predicted_breaches_next_14_days || 0}
+              </p>
+            </div>
           </div>
         </Card>
-        <Card title="SLA forecast">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <p className="text-slate-300">
-              Due next 7d: <span className="font-mono text-slate-100">{sla?.due_next_7_days ?? "—"}</span>
-            </p>
-            <p className="text-slate-300">
-              Due next 14d: <span className="font-mono text-slate-100">{sla?.due_next_14_days ?? "—"}</span>
-            </p>
-            <p className="text-slate-300">
-              Breaches (7d):{" "}
-              <span className="font-mono text-amber-300">{sla?.predicted_breaches_next_7_days ?? "—"}</span>
-            </p>
-            <p className="text-slate-300">
-              Breaches (14d):{" "}
-              <span className="font-mono text-rose-300">{sla?.predicted_breaches_next_14_days ?? "—"}</span>
-            </p>
-          </div>
-        </Card>
-      </div>
+      )}
 
       {/* Top Risks Widget */}
-      <div className="mt-6">
-        <TopRisksWidget />
-      </div>
+      <TopRisksWidget />
+
+      {/* Assistant Panel */}
       <AssistantPanel />
-      <div className="flex flex-wrap gap-3 text-sm">
-        <Link href="/analytics" className="text-sky-400 hover:underline">
-          Full analytics
-        </Link>
-        <Link href="/ml" className="text-sky-400 hover:underline">
-          ML model status
-        </Link>
-      </div>
     </div>
   );
 }

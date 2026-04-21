@@ -6,17 +6,23 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, createUserInvitation } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
 import type { Paginated, UserOut } from "@/types/api";
 
 const PAGE = 30;
 
 export default function AdminUsersPage() {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const router = useRouter();
   const [data, setData] = useState<Paginated<UserOut> | null | undefined>(undefined);
   const [offset, setOffset] = useState(0);
   const [forbidden, setForbidden] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("analyst");
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   const load = useCallback(async () => {
     setData(undefined);
@@ -92,8 +98,68 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-slate-100">Users</h2>
-        <p className="mt-1 text-slate-400">Admin-only directory ({total} users).</p>
+        <p className="mt-1 text-slate-400">
+          {user?.tenant_name} ({user?.tenant_code}) admin directory ({total} users).
+        </p>
       </div>
+
+      <Card title="Invite user">
+        <form
+          className="grid gap-3 md:grid-cols-[1fr_180px_auto]"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setInviteLoading(true);
+            setInviteError(null);
+            setInviteToken(null);
+            const invite = await createUserInvitation({
+              email: inviteEmail.trim(),
+              role_name: inviteRole,
+            });
+            setInviteLoading(false);
+            if (!invite) {
+              setInviteError("Failed to create invitation");
+              return;
+            }
+            setInviteToken(invite.invitation_token);
+            setInviteEmail("");
+          }}
+        >
+          <Input
+            id="inviteEmail"
+            name="inviteEmail"
+            type="email"
+            label="User email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            required
+          />
+          <label className="text-sm text-slate-300">
+            Role
+            <select
+              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+            >
+              <option value="analyst">analyst</option>
+              <option value="manager">manager</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <Button type="submit" disabled={inviteLoading} className="self-end">
+            {inviteLoading ? "Inviting..." : "Create invite"}
+          </Button>
+        </form>
+        {inviteToken ? (
+          <p className="mt-3 break-all text-sm text-emerald-300">
+            Invitation token (share securely): {inviteToken}
+          </p>
+        ) : null}
+        {inviteError ? (
+          <p className="mt-3 text-sm text-rose-400" role="alert">
+            {inviteError}
+          </p>
+        ) : null}
+      </Card>
 
       <Card title="Accounts">
         <div className="overflow-x-auto rounded-lg border border-slate-800">

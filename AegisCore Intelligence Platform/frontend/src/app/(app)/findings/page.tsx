@@ -1,185 +1,325 @@
 "use client";
 
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useFindings, type Finding, type FindingsFilters } from "@/hooks/useFindings";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FilterBar, FilterSelect, FilterSearch } from "@/components/ui/FilterBar";
+import { DataTable } from "@/components/ui/DataTable";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DetailDrawer, DetailSection, DetailField } from "@/components/ui/DetailDrawer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { listFindings } from "@/lib/api";
-import type { FindingOut, Paginated } from "@/types/api";
+import { ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const PAGE = 25;
+const severityColors: Record<string, string> = {
+  CRITICAL: "bg-red-500/10 text-red-400 border-red-500/20",
+  HIGH: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  MEDIUM: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  LOW: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+};
 
-const STATUSES = ["", "OPEN", "IN_PROGRESS", "REMEDIATED"];
+const statusColors: Record<string, string> = {
+  OPEN: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  IN_PROGRESS: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  RESOLVED: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  CLOSED: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+};
+
+const LIMIT = 25;
 
 export default function FindingsPage() {
-  const [data, setData] = useState<Paginated<FindingOut> | null | undefined>(undefined);
-  const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
-  const [qDraft, setQDraft] = useState("");
+  const { data, total, loading, error, selectedFinding, fetchFindings, fetchFindingDetail, setSelectedFinding } = useFindings();
   const [offset, setOffset] = useState(0);
+  const [filters, setFilters] = useState<FindingsFilters>({});
+  const [detailOpen, setDetailOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setData(undefined);
-    const res = await listFindings({
-      limit: PAGE,
-      offset,
-      status: status || undefined,
-      q: q || undefined,
-    });
-    setData(res);
-  }, [offset, status, q]);
+  const loadData = useCallback(async () => {
+    await fetchFindings(LIMIT, offset, filters);
+  }, [fetchFindings, offset, filters]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    loadData();
+  }, [loadData]);
 
-  function applySearch(e: React.FormEvent) {
-    e.preventDefault();
+  const handleClearFilters = () => {
+    setFilters({});
     setOffset(0);
-    setQ(qDraft.trim());
-  }
+  };
 
-  const rows = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE < total;
+  const hasFilters = Object.values(filters).some((v) => v !== undefined && v !== "");
 
-  if (data === undefined) {
+  const handleRowClick = async (finding: Finding) => {
+    await fetchFindingDetail(finding.id);
+    setDetailOpen(true);
+  };
+
+  const columns = [
+    {
+      key: "cve_id",
+      header: "CVE ID",
+      sortable: true,
+      cell: (item: Finding) => (
+        item.cve_id ? (
+          <Link
+            href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-sky-400 hover:text-sky-300 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {item.cve_id}
+          </Link>
+        ) : (
+          <span className="text-sm text-slate-500">—</span>
+        )
+      ),
+    },
+    {
+      key: "asset_name",
+      header: "Asset",
+      sortable: true,
+      cell: (item: Finding) => (
+        <div className="text-sm text-slate-200">{item.asset_name}</div>
+      ),
+    },
+    {
+      key: "severity",
+      header: "Severity",
+      width: "100px",
+      sortable: true,
+      cell: (item: Finding) => (
+        <Badge className={cn("text-xs", severityColors[item.severity] || "bg-slate-500/10 text-slate-400")}>
+          {item.severity}
+        </Badge>
+      ),
+    },
+    {
+      key: "cvss_score",
+      header: "CVSS",
+      width: "80px",
+      sortable: true,
+      cell: (item: Finding) => (
+        <span className="font-mono text-sm text-slate-400">
+          {item.cvss_score?.toFixed(1) || "N/A"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "120px",
+      sortable: true,
+      cell: (item: Finding) => (
+        <Badge className={cn("text-xs", statusColors[item.status] || "bg-slate-500/10 text-slate-400")}>
+          {item.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "discovered_at",
+      header: "Discovered",
+      width: "140px",
+      sortable: true,
+      cell: (item: Finding) => (
+        <span className="text-sm text-slate-500">
+          {new Date(item.discovered_at).toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      width: "60px",
+      cell: () => (
+        <ChevronRight className="h-4 w-4 text-slate-600" />
+      ),
+    },
+  ];
+
+  if (error && !loading && data.length === 0) {
     return (
-      <p className="text-slate-500" role="status">
-        Loading findings…
-      </p>
-    );
-  }
-
-  if (!data) {
-    return (
-      <p className="text-rose-400" role="alert">
-        Failed to load findings.
-      </p>
+      <div className="space-y-6">
+        <PageHeader
+          title="Findings"
+          description="Complete vulnerability findings inventory"
+        />
+        <ErrorState title="Failed to load findings" message={error} onRetry={loadData} />
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-100">Findings</h2>
-        <p className="mt-1 text-slate-400">
-          {total} total · showing {rows.length} from offset {offset}
-        </p>
-      </div>
+      <PageHeader
+        title="Findings"
+        description="Complete vulnerability findings inventory"
+      />
 
-      <Card title="Filters">
-        <form
-          className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end"
-          onSubmit={applySearch}
-        >
-          <div className="min-w-[200px]">
-            <label htmlFor="status-filter" className="mb-1 block text-sm font-medium text-slate-300">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              className="w-full rounded-lg border border-slate-600 bg-white px-3 py-2 text-gray-900 [color-scheme:light] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
-                setOffset(0);
-              }}
-            >
-              {STATUSES.map((s) => (
-                <option key={s || "all"} value={s}>
-                  {s || "All statuses"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <Input
-            id="findings-q"
-            label="Search (notes, CVE)"
-            value={qDraft}
-            onChange={(e) => setQDraft(e.target.value)}
-            placeholder="CVE-2024 or keyword"
-            className="min-w-[220px] flex-1"
+      {/* Filters */}
+      <FilterBar onClear={handleClearFilters} hasFilters={hasFilters}>
+        <FilterSearch
+          placeholder="Search CVE, asset..."
+          value={filters.search || ""}
+          onChange={(value) => setFilters((f) => ({ ...f, search: value || undefined }))}
+          className="min-w-[240px]"
+        />
+        <FilterSelect
+          label="Status"
+          value={filters.status || ""}
+          options={[
+            { value: "", label: "All Statuses" },
+            { value: "OPEN", label: "Open" },
+            { value: "IN_PROGRESS", label: "In Progress" },
+            { value: "RESOLVED", label: "Resolved" },
+            { value: "CLOSED", label: "Closed" },
+          ]}
+          onChange={(value) => setFilters((f) => ({ ...f, status: value || undefined }))}
+        />
+        <FilterSelect
+          label="Severity"
+          value={filters.severity || ""}
+          options={[
+            { value: "", label: "All Severities" },
+            { value: "CRITICAL", label: "Critical" },
+            { value: "HIGH", label: "High" },
+            { value: "MEDIUM", label: "Medium" },
+            { value: "LOW", label: "Low" },
+          ]}
+          onChange={(value) => setFilters((f) => ({ ...f, severity: value || undefined }))}
+        />
+      </FilterBar>
+
+      {/* Table */}
+      <DataTable
+        data={data}
+        columns={columns}
+        keyExtractor={(item) => item.id}
+        loading={loading}
+        error={error ?? undefined}
+        onRetry={loadData}
+        emptyState={
+          <EmptyState
+            type={hasFilters ? "search" : "default"}
+            title={hasFilters ? "No matching findings" : "No findings found"}
+            description={
+              hasFilters
+                ? "Try adjusting your filters to see more results"
+                : "Upload vulnerability scan data to see findings"
+            }
+            action={
+              hasFilters
+                ? { label: "Clear Filters", onClick: handleClearFilters, variant: "outline" }
+                : { label: "Upload Data", onClick: () => (window.location.href = "/uploads"), variant: "primary" }
+            }
           />
-          <Button type="submit">Apply</Button>
-        </form>
-      </Card>
+        }
+        onRowClick={handleRowClick}
+        pagination={{
+          page: Math.floor(offset / LIMIT) + 1,
+          pageSize: LIMIT,
+          total,
+          onPageChange: (page) => setOffset((page - 1) * LIMIT),
+        }}
+      />
 
-      <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <caption className="sr-only">Findings list</caption>
-          <thead className="border-b border-slate-800 bg-slate-900/80 text-slate-400">
-            <tr>
-              <th scope="col" className="px-4 py-3 font-medium">
-                CVE
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Status
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Discovered
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Priority
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {rows.map((f) => (
-              <tr key={f.id} className="hover:bg-slate-900/40">
-                <td className="px-4 py-3 font-mono text-sky-300">
-                  {f.cve_id || "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge tone={f.status}>{f.status}</Badge>
-                </td>
-                <td className="px-4 py-3 text-slate-400">
-                  {new Date(f.discovered_at).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-slate-400">
-                  {f.internal_priority_score ?? "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/findings/${f.id}`}
-                    className="text-sky-400 hover:underline focus:underline"
-                  >
-                    View
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length ? (
-          <p className="p-6 text-center text-slate-500">No findings match filters.</p>
-        ) : null}
-      </div>
+      {/* Detail Drawer */}
+      <DetailDrawer
+        isOpen={detailOpen}
+        onClose={() => {
+          setDetailOpen(false);
+          setSelectedFinding(null);
+        }}
+        title={selectedFinding?.cve_id || "Finding Details"}
+        subtitle={selectedFinding?.asset_name}
+        footer={
+          <div className="flex gap-3">
+            <Link href={`/findings/${selectedFinding?.id}`} className="flex-1">
+              <Button variant="primary" className="w-full">
+                View Full Details
+              </Button>
+            </Link>
+          </div>
+        }
+      >
+        {selectedFinding && (
+          <>
+            <DetailSection title="Vulnerability Information">
+              <DetailField label="CVE ID" value={selectedFinding.cve_id || "N/A"} />
+              <DetailField label="Asset" value={selectedFinding.asset_name} />
+              <DetailField
+                label="Severity"
+                value={
+                  <Badge className={severityColors[selectedFinding.severity] || "bg-slate-500/10 text-slate-400"}>
+                    {selectedFinding.severity}
+                  </Badge>
+                }
+              />
+              <DetailField
+                label="CVSS Score"
+                value={
+                  <span className="font-mono text-slate-200">
+                    {selectedFinding.cvss_score?.toFixed(1) || "N/A"}
+                  </span>
+                }
+              />
+              <DetailField
+                label="Risk Score"
+                value={
+                  <span className="font-mono text-slate-200">
+                    {selectedFinding.risk_score?.toFixed(1) || "N/A"}
+                  </span>
+                }
+              />
+            </DetailSection>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!hasPrev}
-          onClick={() => setOffset((o) => Math.max(0, o - PAGE))}
-        >
-          Previous
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!hasNext}
-          onClick={() => setOffset((o) => o + PAGE)}
-        >
-          Next
-        </Button>
-      </div>
+            <DetailSection title="Details">
+              <DetailField
+                label="Status"
+                value={
+                  <Badge className={statusColors[selectedFinding.status] || "bg-slate-500/10 text-slate-400"}>
+                    {selectedFinding.status}
+                  </Badge>
+                }
+              />
+              <DetailField
+                label="Discovered"
+                value={new Date(selectedFinding.discovered_at).toLocaleString()}
+              />
+              {selectedFinding.last_seen_at && (
+                <DetailField
+                  label="Last Seen"
+                  value={new Date(selectedFinding.last_seen_at).toLocaleString()}
+                />
+              )}
+              {selectedFinding.service_name && (
+                <DetailField label="Service" value={selectedFinding.service_name} />
+              )}
+              {selectedFinding.port && (
+                <DetailField label="Port" value={selectedFinding.port.toString()} />
+              )}
+            </DetailSection>
+
+            {selectedFinding.description && (
+              <DetailSection title="Description">
+                <p className="text-sm text-slate-300 whitespace-pre-wrap">
+                  {selectedFinding.description}
+                </p>
+              </DetailSection>
+            )}
+
+            {selectedFinding.remediation && (
+              <DetailSection title="Remediation">
+                <p className="text-sm text-slate-300 whitespace-pre-wrap">
+                  {selectedFinding.remediation}
+                </p>
+              </DetailSection>
+            )}
+          </>
+        )}
+      </DetailDrawer>
     </div>
   );
 }

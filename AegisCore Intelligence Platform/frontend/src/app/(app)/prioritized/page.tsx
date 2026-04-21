@@ -1,262 +1,347 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { getPrioritizedVulnerabilities } from "@/lib/api";
-import type { PrioritizedFindingOut } from "@/types/api";
-import { RiskScoreBadge, RiskScoreBar } from "@/components/prioritization/RiskScoreBadge";
-import { RequireAuth } from "@/components/auth/RequireAuth";
+import { useVulnerabilities, type PrioritizedVulnerability, type Filters } from "@/hooks/useVulnerabilities";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FilterBar, FilterSelect } from "@/components/ui/FilterBar";
+import { DataTable } from "@/components/ui/DataTable";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DetailDrawer, DetailSection, DetailField } from "@/components/ui/DetailDrawer";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export default function PrioritizedFindingsPage() {
-  return (
-    <RequireAuth>
-      <PrioritizedContent />
-    </RequireAuth>
-  );
-}
+const statusColors: Record<string, string> = {
+  OPEN: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  IN_PROGRESS: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  RESOLVED: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  CLOSED: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+};
 
-function PrioritizedContent() {
-  const [findings, setFindings] = useState<PrioritizedFindingOut[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+const LIMIT = 25;
+
+export default function PrioritizedPage() {
+  const { data, total, loading, error, fetchVulnerabilities } = useVulnerabilities();
   const [offset, setOffset] = useState(0);
-  const limit = 20;
+  const [filters, setFilters] = useState<Filters>({});
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [selectedVulnerability, setSelectedVulnerability] = useState<PrioritizedVulnerability | null>(null);
 
-  const [minRiskScore, setMinRiskScore] = useState<number | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<string>("OPEN");
+  const loadData = useCallback(async () => {
+    await fetchVulnerabilities(LIMIT, offset, filters);
+  }, [fetchVulnerabilities, offset, filters]);
 
   useEffect(() => {
-    async function loadFindings() {
-      try {
-        setLoading(true);
-        const data = await getPrioritizedVulnerabilities({
-          limit,
-          offset,
-          min_risk_score: minRiskScore,
-          status: statusFilter,
-        });
-        if (data) {
-          setFindings(data.items);
-          setTotal(data.total);
-        } else {
-          setError("Failed to load prioritized vulnerabilities");
-        }
-      } catch (err) {
-        setError("Error loading data");
-      } finally {
-        setLoading(false);
+    loadData();
+  }, [loadData]);
+
+  const handleClearFilters = () => {
+    setFilters({});
+    setOffset(0);
+  };
+
+  const hasFilters = Object.values(filters).some((v) => v !== undefined && v !== "");
+
+  const handleSort = (key: string) => {
+    setSortConfig((current) => {
+      if (current?.key === key) {
+        return { key, direction: current.direction === "asc" ? "desc" : "asc" };
       }
-    }
+      return { key, direction: "desc" };
+    });
+  };
 
-    loadFindings();
-  }, [offset, minRiskScore, statusFilter]);
+  const sortedData = [...data].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const aValue = a[sortConfig.key as keyof PrioritizedVulnerability];
+    const bValue = b[sortConfig.key as keyof PrioritizedVulnerability];
+    if (aValue === undefined || bValue === undefined) return 0;
+    if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+    return 0;
+  });
 
-  const totalPages = Math.ceil(total / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
+  const columns = [
+    {
+      key: "risk_score",
+      header: "Risk Score",
+      width: "120px",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <div className="flex items-center gap-2">
+          <div
+            className={cn(
+              "h-2 w-2 rounded-full",
+              item.risk_score >= 80 ? "bg-red-500" :
+              item.risk_score >= 60 ? "bg-orange-500" :
+              item.risk_score >= 40 ? "bg-amber-500" :
+              "bg-emerald-500"
+            )}
+          />
+          <span className="font-mono text-sm font-medium text-slate-200">
+            {item.risk_score.toFixed(1)}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "cve_id",
+      header: "CVE ID",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <Link
+          href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-sky-400 hover:text-sky-300 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {item.cve_id}
+        </Link>
+      ),
+    },
+    {
+      key: "asset_name",
+      header: "Asset",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <div className="text-sm text-slate-200">{item.asset_name}</div>
+      ),
+    },
+    {
+      key: "cvss_score",
+      header: "CVSS",
+      width: "80px",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <span className="font-mono text-sm text-slate-400">
+          {item.cvss_score?.toFixed(1) || "N/A"}
+        </span>
+      ),
+    },
+    {
+      key: "severity",
+      header: "Severity",
+      width: "100px",
+      cell: (item: PrioritizedVulnerability) => {
+        const severity = item.cvss_score >= 9 ? "CRITICAL" :
+                        item.cvss_score >= 7 ? "HIGH" :
+                        item.cvss_score >= 4 ? "MEDIUM" : "LOW";
+        return (
+          <Badge className={cn("text-xs", 
+            severity === "CRITICAL" ? "bg-red-500/10 text-red-400" :
+            severity === "HIGH" ? "bg-orange-500/10 text-orange-400" :
+            severity === "MEDIUM" ? "bg-amber-500/10 text-amber-400" :
+            "bg-emerald-500/10 text-emerald-400"
+          )}>
+            {severity}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "120px",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <Badge className={cn("text-xs", statusColors[item.status] || "bg-slate-500/10 text-slate-400")}>
+          {item.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "discovered_at",
+      header: "Discovered",
+      width: "140px",
+      sortable: true,
+      cell: (item: PrioritizedVulnerability) => (
+        <span className="text-sm text-slate-500">
+          {new Date(item.discovered_at).toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      width: "60px",
+      cell: () => (
+        <ChevronRight className="h-4 w-4 text-slate-600" />
+      ),
+    },
+  ];
+
+  if (error && !loading && data.length === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Prioritized Vulnerabilities"
+          description="Risk-ranked vulnerabilities requiring attention"
+        />
+        <ErrorState title="Failed to load vulnerabilities" message={error} onRetry={loadData} />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Prioritized Vulnerabilities</h1>
-        <p className="text-gray-600 mt-1">
-          Ranked by risk score — highest risk vulnerabilities that need immediate attention
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Prioritized Vulnerabilities"
+        description="Risk-ranked vulnerabilities requiring attention"
+      />
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Minimum Risk Score
-            </label>
-            <select
-              value={minRiskScore || ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setMinRiskScore(val ? parseInt(val) : undefined);
-                setOffset(0);
-              }}
-              className="border border-gray-300 rounded-md bg-white px-3 py-2 text-sm text-gray-900 [color-scheme:light]"
-            >
-              <option value="" className="text-gray-900 bg-white">All scores</option>
-              <option value="80" className="text-gray-900 bg-white">Critical (80+)</option>
-              <option value="60" className="text-gray-900 bg-white">High (60+)</option>
-              <option value="40" className="text-gray-900 bg-white">Medium (40+)</option>
-              <option value="20" className="text-gray-900 bg-white">Low (20+)</option>
-            </select>
-          </div>
+      <FilterBar onClear={handleClearFilters} hasFilters={hasFilters}>
+        <FilterSelect
+          label="Status"
+          value={filters.status || ""}
+          options={[
+            { value: "", label: "All Statuses" },
+            { value: "OPEN", label: "Open" },
+            { value: "IN_PROGRESS", label: "In Progress" },
+            { value: "RESOLVED", label: "Resolved" },
+            { value: "CLOSED", label: "Closed" },
+          ]}
+          onChange={(value) => setFilters((f) => ({ ...f, status: value || undefined }))}
+        />
+        <FilterSelect
+          label="Min Risk Score"
+          value={filters.minRiskScore?.toString() || ""}
+          options={[
+            { value: "", label: "Any Risk" },
+            { value: "80", label: "Critical (80+)" },
+            { value: "60", label: "High (60+)" },
+            { value: "40", label: "Medium (40+)" },
+          ]}
+          onChange={(value) =>
+            setFilters((f) => ({ ...f, minRiskScore: value ? parseInt(value) : undefined }))
+          }
+        />
+      </FilterBar>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setOffset(0);
-              }}
-              className="border border-gray-300 rounded-md bg-white px-3 py-2 text-sm text-gray-900 [color-scheme:light]"
-            >
-              <option value="OPEN" className="text-gray-900 bg-white">Open</option>
-              <option value="IN_PROGRESS" className="text-gray-900 bg-white">In Progress</option>
-              <option value="" className="text-gray-900 bg-white">All statuses</option>
-            </select>
-          </div>
+      {/* Table */}
+      <DataTable
+        data={sortedData}
+        columns={columns}
+        keyExtractor={(item) => item.id}
+        loading={loading}
+        error={error ?? undefined}
+        onRetry={loadData}
+        emptyState={
+          <EmptyState
+            type={hasFilters ? "search" : "default"}
+            title={hasFilters ? "No matching vulnerabilities" : "No vulnerabilities found"}
+            description={
+              hasFilters
+                ? "Try adjusting your filters to see more results"
+                : "Upload vulnerability scan data to see prioritized findings"
+            }
+            action={
+              hasFilters
+                ? { label: "Clear Filters", onClick: handleClearFilters, variant: "outline" }
+                : { label: "Upload Data", onClick: () => (window.location.href = "/uploads"), variant: "primary" }
+            }
+          />
+        }
+        onRowClick={(item: PrioritizedVulnerability) => setSelectedVulnerability(item)}
+        pagination={{
+          page: Math.floor(offset / LIMIT) + 1,
+          pageSize: LIMIT,
+          total,
+          onPageChange: (page) => setOffset((page - 1) * LIMIT),
+        }}
+      />
 
-          <div className="ml-auto text-sm text-gray-500">
-            Showing {findings.length} of {total} vulnerabilities
-          </div>
-        </div>
-      </div>
-
-      {/* Results */}
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-24 bg-gray-100 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      ) : error ? (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-red-700">
-          {error}
-        </div>
-      ) : findings.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
-          <p className="text-gray-500 text-lg">No vulnerabilities match the current filters</p>
-          <button
-            onClick={() => {
-              setMinRiskScore(undefined);
-              setStatusFilter("OPEN");
-              setOffset(0);
-            }}
-            className="mt-4 text-blue-600 hover:text-blue-800"
-          >
-            Clear filters
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="space-y-4">
-            {findings.map((finding) => (
-              <FindingCard key={finding.id} finding={finding} />
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                disabled={offset === 0}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ← Previous
-              </button>
-              <span className="text-sm text-gray-600">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setOffset(offset + limit)}
-                disabled={currentPage >= totalPages}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next →
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function FindingCard({ finding }: { finding: PrioritizedFindingOut }) {
-  const factors = finding.risk_factors || {};
-  const contributing = (factors.contributing_factors || []) as Array<{
-    factor: string;
-    description: string;
-    impact: string;
-  }>;
-
-  return (
-    <div className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-5">
-      <div className="flex items-start gap-4">
-        <RiskScoreBadge score={finding.risk_score} size="md" showLabel />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              href={`/findings/${finding.id}`}
-              className="text-lg font-semibold text-blue-600 hover:text-blue-800"
-            >
-              {finding.cve_id || "Unknown CVE"}
+      {/* Detail Drawer */}
+      <DetailDrawer
+        isOpen={!!selectedVulnerability}
+        onClose={() => setSelectedVulnerability(null)}
+        title={selectedVulnerability?.cve_id || "Vulnerability Details"}
+        subtitle={selectedVulnerability?.asset_name}
+        footer={
+          <div className="flex gap-3">
+            <Link href={`/findings/${selectedVulnerability?.id}`} className="flex-1">
+              <Button variant="primary" className="w-full">
+                View Full Details
+              </Button>
             </Link>
-            <span
-              className={`px-2 py-0.5 text-xs rounded-full ${
-                finding.status === "OPEN"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : finding.status === "IN_PROGRESS"
-                  ? "bg-blue-100 text-blue-800"
-                  : "bg-green-100 text-green-800"
-              }`}
-            >
-              {finding.status}
-            </span>
-            {finding.asset_criticality && finding.asset_criticality <= 2 && (
-              <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-800">
-                Critical Asset
-              </span>
+          </div>
+        }
+      >
+        {selectedVulnerability && (
+          <>
+            <DetailSection title="Risk Assessment">
+              <div className="grid grid-cols-2 gap-4">
+                <DetailField
+                  label="Risk Score"
+                  value={
+                    <span className={cn(
+                      "text-lg font-semibold",
+                      selectedVulnerability.risk_score >= 80 ? "text-red-400" :
+                      selectedVulnerability.risk_score >= 60 ? "text-orange-400" :
+                      selectedVulnerability.risk_score >= 40 ? "text-amber-400" :
+                      "text-emerald-400"
+                    )}>
+                      {selectedVulnerability.risk_score.toFixed(1)}
+                    </span>
+                  }
+                />
+                <DetailField
+                  label="CVSS Score"
+                  value={
+                    <span className="font-mono text-slate-200">
+                      {selectedVulnerability.cvss_score?.toFixed(1) || "N/A"}
+                    </span>
+                  }
+                />
+              </div>
+            </DetailSection>
+
+            <DetailSection title="Details">
+              <DetailField label="Asset" value={selectedVulnerability.asset_name} />
+              <DetailField label="Asset Criticality" value={selectedVulnerability.asset_criticality} />
+              <DetailField
+                label="Discovered"
+                value={new Date(selectedVulnerability.discovered_at).toLocaleString()}
+              />
+              {selectedVulnerability.due_at && (
+                <DetailField
+                  label="Due Date"
+                  value={new Date(selectedVulnerability.due_at).toLocaleString()}
+                />
+              )}
+            </DetailSection>
+
+            <DetailSection title="Status">
+              <div className="flex items-center gap-2">
+                <Badge className={statusColors[selectedVulnerability.status] || "bg-slate-500/10 text-slate-400"}>
+                  {selectedVulnerability.status}
+                </Badge>
+              </div>
+            </DetailSection>
+
+            {selectedVulnerability.risk_factors && (
+              <DetailSection title="Risk Factors">
+                <div className="space-y-2">
+                  {Object.entries(selectedVulnerability.risk_factors).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-sm text-slate-400 capitalize">
+                        {key.replace(/_/g, " ")}
+                      </span>
+                      <span className="font-mono text-sm text-slate-200">
+                        {typeof value === "number" ? value.toFixed(2) : value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </DetailSection>
             )}
-          </div>
-
-          <div className="mt-2 text-sm text-gray-600">
-            <span className="font-medium">Asset:</span> {finding.asset_name || "Unknown"}
-            {finding.cvss_score && (
-              <span className="ml-4">
-                <span className="font-medium">CVSS:</span> {finding.cvss_score.toFixed(1)}
-              </span>
-            )}
-            <span className="ml-4">
-              <span className="font-medium">Discovered:</span>{" "}
-              {new Date(finding.discovered_at).toLocaleDateString()}
-            </span>
-          </div>
-
-          {/* Contributing Factors */}
-          {contributing.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {contributing.slice(0, 3).map((factor, idx) => (
-                <span
-                  key={idx}
-                  className={`text-xs px-2 py-1 rounded ${
-                    factor.impact === "high"
-                      ? "bg-red-100 text-red-700"
-                      : factor.impact === "medium"
-                      ? "bg-orange-100 text-orange-700"
-                      : "bg-gray-100 text-gray-700"
-                  }`}
-                  title={factor.description}
-                >
-                  {factor.description}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Risk Score Bar */}
-          <div className="mt-3">
-            <RiskScoreBar score={finding.risk_score} height="h-1.5" showValue={false} />
-          </div>
-        </div>
-
-        <Link
-          href={`/findings/${finding.id}`}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-        >
-          View Details
-        </Link>
-      </div>
+          </>
+        )}
+      </DetailDrawer>
     </div>
   );
 }
