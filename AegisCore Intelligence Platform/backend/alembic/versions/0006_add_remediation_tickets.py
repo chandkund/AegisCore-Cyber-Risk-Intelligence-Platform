@@ -18,6 +18,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Skip if table already exists (created by initial schema migration)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if "remediation_tickets" in inspector.get_table_names():
+        return
+    
     op.create_table(
         "remediation_tickets",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),

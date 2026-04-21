@@ -1,30 +1,63 @@
-# Next.js production image (standalone output).
+# Frontend Dockerfile - Next.js Production with Health Checks
+# Multi-stage build for optimized production image
+
+# ==============================================================================
+# STAGE 1: Dependencies
+# ==============================================================================
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
 
-FROM deps AS builder
+# Copy package files
+COPY frontend/package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+# ==============================================================================
+# STAGE 2: Builder
+# ==============================================================================
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
+
+# Build with optimizations
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 RUN npm run build
 
+# ==============================================================================
+# STAGE 3: Production Runner
+# ==============================================================================
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+
+# Security: Run as non-root
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_SHARP_PATH=/tmp
 
+# Create non-root user
 RUN groupadd --system --gid 1001 nodejs \
-    && useradd --system --uid 1001 --gid nodejs nextjs
+    && useradd --system --uid 1001 --gid nodejs nextjs \
+    && mkdir -p /tmp && chown nextjs:nodejs /tmp
 
-COPY --from=builder /app/public ./public
+# Copy only necessary files from builder
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Switch to non-root user
 USER nextjs
+
+# Expose port
 EXPOSE 3000
 ENV PORT=3000 \
     HOSTNAME=0.0.0.0
 
+# Health check - verifies Next.js is serving
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))" || exit 1
+
+# Start the application
 CMD ["node", "server.js"]

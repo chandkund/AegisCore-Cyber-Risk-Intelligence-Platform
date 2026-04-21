@@ -77,11 +77,10 @@ export function FileUpload({
         formData.append("description", description);
       }
 
+      // Cookie-based auth - cookies sent automatically with credentials: 'include'
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/upload`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${sessionStorage.getItem("access_token") || ""}`,
-        },
+        credentials: "include",
         body: formData,
       });
 

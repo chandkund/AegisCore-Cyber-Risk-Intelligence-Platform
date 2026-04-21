@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AuthProvider } from "@/components/auth/AuthProvider";
-import LoginPage from "@/app/(auth)/login/page";
+import LoginPage from "@/app/login/page";
 import { loginRequest } from "@/lib/api";
 
 // Mock the API module
@@ -33,6 +33,7 @@ describe("LoginPage", () => {
       </AuthProvider>
     );
 
+    expect(screen.getByLabelText(/company code/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
@@ -53,6 +54,9 @@ describe("LoginPage", () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "test@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/company code/i), {
+      target: { value: "acme" },
     });
     fireEvent.change(screen.getByLabelText(/password/i), {
       target: { value: "wrongpassword" },
@@ -85,13 +89,16 @@ describe("LoginPage", () => {
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "admin@aegiscore.local" },
     });
+    fireEvent.change(screen.getByLabelText(/company code/i), {
+      target: { value: "default" },
+    });
     fireEvent.change(screen.getByLabelText(/password/i), {
       target: { value: "admin123" },
     });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockedLoginRequest).toHaveBeenCalledWith("admin@aegiscore.local", "admin123");
+      expect(mockedLoginRequest).toHaveBeenCalledWith("default", "admin@aegiscore.local", "admin123");
     });
   });
 
@@ -108,14 +115,18 @@ describe("LoginPage", () => {
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "test@example.com" },
     });
+    fireEvent.change(screen.getByLabelText(/company code/i), {
+      target: { value: "acme" },
+    });
     fireEvent.change(screen.getByLabelText(/password/i), {
       target: { value: "password" },
     });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button")).toBeDisabled();
-      expect(screen.getByRole("button")).toHaveTextContent(/signing in/i);
+      const submitButton = screen.getByRole("button", { name: /signing in/i });
+      expect(submitButton).toBeDisabled();
+      expect(submitButton).toHaveTextContent(/signing in/i);
     });
   });
 });

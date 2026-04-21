@@ -1,0 +1,32 @@
+# Grafana Datasources Configuration
+# AegisCore Intelligence Platform
+# ==============================================================================
+
+apiVersion: 1
+
+datasources:
+  # Prometheus
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.48.0
+      cacheLevel: 'High'
+      incrementalQuerying: true
+      
+  # Loki (if configured)
+  # - name: Loki
+  #   type: loki
+  #   access: proxy
+  #   url: http://loki:3100
+  #   editable: false
+  #   jsonData:
+  #     httpHeaderName1: 'X-Scope-OrgID'
+  #   secureJsonData:
+  #     httpHeaderValue1: 'tenant'

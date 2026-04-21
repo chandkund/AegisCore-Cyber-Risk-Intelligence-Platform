@@ -1,91 +1,86 @@
-"""Global API rate limiting per user/IP.
+"""Rate limiting using slowapi with Redis support.
 
-Uses in-memory sliding window. For production, consider Redis-based rate limiting.
+Provides strict rate limits for authentication endpoints.
 """
 
 from __future__ import annotations
 
-import threading
-import time
-from collections import defaultdict
-from typing import Dict, List, Tuple
+import os
+from typing import Optional
 
-from fastapi import HTTPException, Request, status
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from fastapi import Request, HTTPException, status
 
-_lock = threading.Lock()
-# (identifier) -> [(timestamp, count)]
-_buckets: Dict[str, List[Tuple[float, int]]] = defaultdict(list)
+# Initialize limiter with Redis if available, otherwise memory
+redis_url = os.environ.get("REDIS_URL")
+if redis_url:
+    from slowapi.util import get_redis
+    storage_uri = f"redis+{redis_url}"
+else:
+    storage_uri = "memory://"
 
-# Rate limits: (window_seconds, max_requests)
-DEFAULT_LIMIT = (60, 120)  # 120 requests per minute
-STRICT_LIMIT = (60, 30)    # 30 requests per minute for sensitive endpoints
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=storage_uri,
+    default_limits=["120 per minute"],
+    strategy="moving-window",  # More accurate than fixed-window
+)
 
 
-def get_identifier(request: Request) -> str:
-    """Get rate limit identifier from request."""
-    # Try to get user ID from auth header
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        # Use token prefix as identifier (don't decode, just hash prefix)
-        token = auth[7:15]  # First 8 chars of token
-        return f"user:{token}"
+def get_auth_limit_key(request: Request) -> str:
+    """Get rate limit key for auth endpoints (IP + email if available)."""
+    client_ip = get_remote_address(request)
     
-    # Fall back to IP address
-    client = request.client
-    ip = client.host if client else "unknown"
-    return f"ip:{ip}"
-
-
-def check_rate_limit(
-    identifier: str,
-    window_seconds: int = 60,
-    max_requests: int = 120,
-) -> bool:
-    """Check if request is within rate limit. Returns True if allowed."""
-    now = time.monotonic()
+    # Try to extract email/username from request body for login attempts
+    # This prevents distributed brute force attacks
+    try:
+        body = request.scope.get("body", b"")
+        if body:
+            import json
+            data = json.loads(body.decode())
+            email = data.get("email", "").lower().strip()
+            if email:
+                return f"auth:{email}:{client_ip}"
+    except Exception:
+        pass
     
-    with _lock:
-        bucket = _buckets[identifier]
-        # Remove old entries outside window
-        bucket[:] = [(t, c) for t, c in bucket if now - t < window_seconds]
-        
-        # Count total requests in window
-        total = sum(c for _, c in bucket)
-        
-        if total >= max_requests:
-            return False
-        
-        # Add current request
-        bucket.append((now, 1))
-        return True
+    return f"auth:{client_ip}"
 
 
-async def rate_limit_middleware(request: Request, call_next):
-    """FastAPI middleware for rate limiting."""
-    # Skip health checks and docs
-    path = request.url.path
-    if path in ["/health", "/ready", "/api/v1/docs", "/api/v1/openapi.json"]:
-        return await call_next(request)
+# Rate limit configurations
+LOGIN_LIMIT = "5 per minute"
+REGISTER_LIMIT = "3 per minute"
+VERIFY_LIMIT = "10 per minute"
+PASSWORD_RESET_LIMIT = "3 per minute"
+UPLOAD_LIMIT = "10 per minute"
+SENSITIVE_LIMIT = "30 per minute"
 
-    # Stricter limits for auth endpoints
-    if "/auth/" in path and request.method == "POST":
-        window, max_req = STRICT_LIMIT
-    else:
-        window, max_req = DEFAULT_LIMIT
 
-    identifier = get_identifier(request)
-
-    if not check_rate_limit(identifier, window, max_req):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded. Please try again later.",
-            headers={"Retry-After": str(window)},
-        )
-
-    return await call_next(request)
+def get_endpoint_limit(path: str, method: str) -> Optional[str]:
+    """Get rate limit for specific endpoint."""
+    if method != "POST":
+        return None
+    
+    # Auth endpoints - strict limits
+    if "/auth/login" in path:
+        return LOGIN_LIMIT
+    elif "/auth/register" in path:
+        return REGISTER_LIMIT
+    elif "/auth/verify" in path:
+        return VERIFY_LIMIT
+    elif "/auth/password-reset" in path or "/auth/forgot-password" in path:
+        return PASSWORD_RESET_LIMIT
+    elif "/upload" in path:
+        return UPLOAD_LIMIT
+    elif "/auth/" in path:
+        return SENSITIVE_LIMIT
+    
+    return None
 
 
 def reset_for_tests() -> None:
-    """Clear all rate limit buckets (for testing only)."""
-    with _lock:
-        _buckets.clear()
+    """Reset rate limiter (for testing only)."""
+    limiter.reset()

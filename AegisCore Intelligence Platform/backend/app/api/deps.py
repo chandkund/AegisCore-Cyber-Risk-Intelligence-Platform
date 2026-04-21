@@ -1,100 +1,66 @@
+"""Authentication and authorization dependencies (backward compatibility shim).
+
+This module re-exports from auth_deps.py for backward compatibility.
+New code should import directly from auth_deps.py.
+"""
+
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass
-from typing import Annotated, Callable
-
-import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
-
-from app.core import rbac
-from app.core.security import decode_access_token
-from app.db.deps import get_db
-from app.repositories.user_repository import UserRepository
-
-security = HTTPBearer(auto_error=False)
-
-
-@dataclass(frozen=True)
-class Principal:
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    email: str
-    full_name: str
-    roles: frozenset[str]
-
-
-def get_current_user(
-    cred: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
-    db: Annotated[Session, Depends(get_db)],
-) -> Principal:
-    if cred is None or not cred.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    try:
-        payload = decode_access_token(cred.credentials)
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-    if payload.get("typ") != "access":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    try:
-        uid = uuid.UUID(str(payload["sub"]))
-        tenant_id = uuid.UUID(str(payload["tid"]))
-    except (KeyError, ValueError) as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject"
-        ) from e
-
-    repo = UserRepository(db)
-    user = repo.get_by_id(uid)
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive"
-        )
-    role_names = frozenset(ur.role.name for ur in user.roles if ur.role is not None)
-    if user.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token tenant mismatch"
-        )
-    return Principal(
-        id=user.id,
-        tenant_id=user.tenant_id,
-        email=user.email,
-        full_name=user.full_name,
-        roles=role_names,
-    )
-
-
-def require_roles(*allowed: str) -> Callable[..., Principal]:
-    allowed_set = frozenset(allowed)
-
-    def _dep(principal: Annotated[Principal, Depends(get_current_user)]) -> Principal:
-        if rbac.ROLE_ADMIN in principal.roles:
-            return principal
-        if not (principal.roles & allowed_set):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return principal
-
-    return _dep
-
-
-AdminDep = Annotated[Principal, Depends(require_roles(rbac.ROLE_ADMIN))]
-WriterDep = Annotated[
+# Re-export all authentication dependencies from the new auth_deps module
+from app.api.auth_deps import (
+    # Principal class
     Principal,
-    Depends(require_roles(rbac.ROLE_ADMIN, rbac.ROLE_ANALYST)),
-]
-ReaderDep = Annotated[
-    Principal,
-    Depends(require_roles(rbac.ROLE_ADMIN, rbac.ROLE_ANALYST, rbac.ROLE_MANAGER)),
-]
+    AccessLevel,
+    # Core dependencies
+    get_current_user,
+    require_active_user,
+    require_roles,
+    require_platform_owner,
+    require_company_admin,
+    require_analyst,
+    require_manager,
+    require_viewer,
+    # Company scope enforcement
+    require_same_company,
+    require_same_company_or_platform,
+    enforce_company_scope,
+    # Typed dependencies for route decorators
+    PlatformOwnerDep,
+    CompanyAdminDep,
+    AdminDep,  # Alias for backward compatibility
+    AnalystDep,
+    WriterDep,  # Alias for backward compatibility
+    ManagerDep,
+    ViewerDep,
+    ReaderDep,  # Alias for backward compatibility
+    CurrentUserDep,
+    ActiveUserDep,
+    # Security utilities
+    security,
+)
+from fastapi.security import HTTPAuthorizationCredentials
+
+# Keep TenantContextDep here as it's related to auth context
+from typing import Annotated
+from fastapi import Depends
+from app.core.tenant import TenantContext, get_tenant_context
+from app.api.auth_deps import get_current_user as _get_current_user
+
+
+def _get_tenant_context_dep(
+    principal: Annotated[Principal, Depends(_get_current_user)]
+) -> TenantContext:
+    """Derive tenant context from authenticated user.
+
+    Never trust client-provided tenant identifiers.
+    """
+    return get_tenant_context(principal)
+
+
+TenantContextDep = Annotated[TenantContext, Depends(_get_tenant_context_dep)]
+
+
+def get_principal_from_token(token: str, db) -> Principal:
+    """Backward-compatible helper to resolve Principal from raw JWT."""
+    cred = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    return get_current_user(cred, db)

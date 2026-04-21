@@ -19,7 +19,7 @@ router = APIRouter(prefix="/simulate", tags=["simulation"])
 
 @router.post("/remediation", response_model=SimulationResultOut)
 def simulate_remediation(
-    principal: WriterDep,
+    principal: ReaderDep,
     body: SimulationRequest,
     db: Session = Depends(get_db),
 ):

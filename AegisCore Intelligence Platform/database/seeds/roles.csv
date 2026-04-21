@@ -2,3 +2,4 @@ id,name,description
 a1000001-0000-4000-8000-000000000001,admin,Full platform administration
 a1000001-0000-4000-8000-000000000002,analyst,Vulnerability analysis and remediation updates
 a1000001-0000-4000-8000-000000000003,manager,Read-focused leadership and SLA views
+a1000001-0000-4000-8000-000000000004,platform_owner,Platform-wide super administrator

@@ -6,25 +6,30 @@ from app.api.v1.endpoints import (
     assets,
     attack_path,
     auth,
+    auth_password,
     cve_records,
     explanations,
     findings,
     ingestion,
     jobs,
     ml,
+    platform,
     policy,
     prioritization,
     search,
     secrets,
     simulation,
     tickets,
+    upload,
     uploads,
     users,
+    compliance,
 )
 from fastapi import APIRouter
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(auth_password.router)
 api_router.include_router(users.router)
 api_router.include_router(findings.router)
 api_router.include_router(assets.router)
@@ -43,3 +48,6 @@ api_router.include_router(attack_path.router)
 api_router.include_router(assistant.router)
 api_router.include_router(tickets.router)
 api_router.include_router(uploads.router)
+api_router.include_router(upload.router)
+api_router.include_router(platform.router)
+api_router.include_router(compliance.router)

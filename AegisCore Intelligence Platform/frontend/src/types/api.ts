@@ -1,10 +1,13 @@
 export type MeResponse = {
   id: string;
   tenant_id: string;
+  tenant_code: string;
+  tenant_name: string;
   email: string;
   full_name: string;
   roles: string[];
   is_active: boolean;
+  is_platform_owner: boolean;
 };
 
 export type TokenResponse = {
@@ -168,6 +171,13 @@ export type UserOut = {
   is_active: boolean;
   created_at: string;
   roles: string[];
+};
+
+export type UserInvitationOut = {
+  invitation_token: string;
+  email: string;
+  role_name: string;
+  expires_at: string;
 };
 
 export type CveRecordOut = {
@@ -393,4 +403,70 @@ export type SecretProviderStatus = {
   provider: string;
   configured: boolean;
   details: Record<string, string>;
+};
+
+// Platform Owner Types
+export type TenantOut = {
+  id: string;
+  name: string;
+  code: string;
+  is_active: boolean;
+  approval_status: string;
+  created_at: string;
+};
+
+export type TenantDetailOut = {
+  id: string;
+  name: string;
+  code: string;
+  is_active: boolean;
+  approval_status: string;
+  approval_notes: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  created_at: string;
+  user_count: number;
+};
+
+export type TenantAdminOut = {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  roles: string[];
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export type TenantUpdate = {
+  is_active?: boolean;
+  approval_status?: string;
+  approval_notes?: string;
+};
+
+export type PlatformStatsOut = {
+  total_tenants: number;
+  active_tenants: number;
+  pending_tenants: number;
+  rejected_tenants: number;
+  total_users: number;
+};
+
+export type PlatformMetricsOut = {
+  total_tenants: number;
+  active_tenants: number;
+  pending_tenants: number;
+  rejected_tenants: number;
+  suspended_tenants: number;
+  total_users: number;
+  active_users: number;
+  inactive_users: number;
+  total_invitations_sent: number;
+  pending_invitations: number;
+  accepted_invitations: number;
+  expired_invitations: number;
+  recent_signups_7d: number;
+  recent_signups_30d: number;
+  logins_today: number;
+  logins_this_week: number;
 };

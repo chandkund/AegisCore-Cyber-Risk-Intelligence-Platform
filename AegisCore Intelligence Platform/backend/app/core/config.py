@@ -114,6 +114,21 @@ class Settings(BaseSettings):
 
     vault_addr: str | None = Field(default=None, validation_alias="VAULT_ADDR")
 
+    # Email configuration
+    email_provider: str = Field(default="console", validation_alias="EMAIL_PROVIDER")
+    from_email: str = Field(default="noreply@aegiscore.io", validation_alias="FROM_EMAIL")
+    
+    # SMTP settings
+    smtp_host: str | None = Field(default=None, validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, validation_alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, validation_alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
+    
+    # AWS SES settings
+    aws_access_key_id: str | None = Field(default=None, validation_alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str | None = Field(default=None, validation_alias="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="us-east-1", validation_alias="AWS_REGION")
 
 
     @computed_field  # type: ignore[prop-decorator]

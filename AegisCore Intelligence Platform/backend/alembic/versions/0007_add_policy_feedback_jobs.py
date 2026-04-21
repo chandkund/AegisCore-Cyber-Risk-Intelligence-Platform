@@ -18,60 +18,68 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "policy_rules",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("name", sa.String(length=160), nullable=False),
-        sa.Column("description", sa.String(length=500), nullable=True),
-        sa.Column("conditions", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("action", sa.String(length=64), nullable=False, server_default="flag"),
-        sa.Column("severity", sa.String(length=16), nullable=False, server_default="MEDIUM"),
-        sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
-    )
-    op.create_index("ix_policy_rules_tenant_id", "policy_rules", ["tenant_id"])
-    op.create_index("ix_policy_rules_tenant_enabled", "policy_rules", ["tenant_id", "is_enabled"])
+    # Skip if tables already exist (created by initial schema migration)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_tables = inspector.get_table_names()
+    
+    if "policy_rules" not in existing_tables:
+        op.create_table(
+            "policy_rules",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("name", sa.String(length=160), nullable=False),
+            sa.Column("description", sa.String(length=500), nullable=True),
+            sa.Column("conditions", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+            sa.Column("action", sa.String(length=64), nullable=False, server_default="flag"),
+            sa.Column("severity", sa.String(length=16), nullable=False, server_default="MEDIUM"),
+            sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
+        )
+        op.create_index("ix_policy_rules_tenant_id", "policy_rules", ["tenant_id"])
+        op.create_index("ix_policy_rules_tenant_enabled", "policy_rules", ["tenant_id", "is_enabled"])
 
-    op.create_table(
-        "prioritization_feedback",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("finding_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("feedback_type", sa.String(length=32), nullable=False),
-        sa.Column("notes", sa.String(length=2000), nullable=True),
-        sa.Column("actor_user_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["finding_id"], ["vulnerability_findings.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
-    )
-    op.create_index("ix_prioritization_feedback_tenant_id", "prioritization_feedback", ["tenant_id"])
-    op.create_index("ix_prioritization_feedback_finding", "prioritization_feedback", ["finding_id"])
-    op.create_index(
-        "ix_prioritization_feedback_tenant_created",
-        "prioritization_feedback",
-        ["tenant_id", "created_at"],
-    )
+    if "prioritization_feedback" not in existing_tables:
+        op.create_table(
+            "prioritization_feedback",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("finding_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("feedback_type", sa.String(length=32), nullable=False),
+            sa.Column("notes", sa.String(length=2000), nullable=True),
+            sa.Column("actor_user_id", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
+            sa.ForeignKeyConstraint(["finding_id"], ["vulnerability_findings.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
+        )
+        op.create_index("ix_prioritization_feedback_tenant_id", "prioritization_feedback", ["tenant_id"])
+        op.create_index("ix_prioritization_feedback_finding", "prioritization_feedback", ["finding_id"])
+        op.create_index(
+            "ix_prioritization_feedback_tenant_created",
+            "prioritization_feedback",
+            ["tenant_id", "created_at"],
+        )
 
-    op.create_table(
-        "background_jobs",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("job_kind", sa.String(length=64), nullable=False),
-        sa.Column("status", sa.String(length=32), nullable=False, server_default="QUEUED"),
-        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("result", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("created_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="SET NULL"),
-    )
-    op.create_index("ix_background_jobs_tenant_id", "background_jobs", ["tenant_id"])
-    op.create_index("ix_background_jobs_tenant_status", "background_jobs", ["tenant_id", "status"])
-    op.create_index("ix_background_jobs_kind_created", "background_jobs", ["job_kind", "created_at"])
+    if "background_jobs" not in existing_tables:
+        op.create_table(
+            "background_jobs",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("job_kind", sa.String(length=64), nullable=False),
+            sa.Column("status", sa.String(length=32), nullable=False, server_default="QUEUED"),
+            sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column("result", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column("created_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.ForeignKeyConstraint(["tenant_id"], ["organizations.id"], ondelete="RESTRICT"),
+            sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="SET NULL"),
+        )
+        op.create_index("ix_background_jobs_tenant_id", "background_jobs", ["tenant_id"])
+        op.create_index("ix_background_jobs_tenant_status", "background_jobs", ["tenant_id", "status"])
+        op.create_index("ix_background_jobs_kind_created", "background_jobs", ["job_kind", "created_at"])
 
 
 def downgrade() -> None:

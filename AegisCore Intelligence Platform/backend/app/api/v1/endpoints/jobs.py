@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ReaderDep, WriterDep
 from app.db.deps import get_db
+from app.schemas.common import Paginated
 from app.schemas.jobs import JobCreateRequest, JobOut
 from app.services.job_service import JobService
 
@@ -20,10 +21,15 @@ def enqueue_job(principal: WriterDep, body: JobCreateRequest, db: Session = Depe
     )
 
 
-@router.get("", response_model=list[JobOut])
+@router.get("", response_model=Paginated[JobOut])
 def list_jobs(
     principal: ReaderDep,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ):
-    return JobService(db, tenant_id=principal.tenant_id).list_jobs(limit=limit)
+    """List jobs with pagination support."""
+    svc = JobService(db, tenant_id=principal.tenant_id)
+    items = svc.list_jobs(limit=limit, offset=offset)
+    total = svc.count_jobs()  # Total count for pagination
+    return Paginated(items=items, total=total, limit=limit, offset=offset)

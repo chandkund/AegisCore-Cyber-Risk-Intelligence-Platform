@@ -30,6 +30,8 @@ idna==3.11
     # via
     #   anyio
     #   email-validator
+itsdangerous==2.2.0
+    # via -r requirements/base.in
 joblib==1.5.3
     # via
     #   -r requirements/base.in

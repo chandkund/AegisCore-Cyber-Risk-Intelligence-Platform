@@ -1,77 +1,93 @@
-# API image: monorepo layout under /app so ML path resolution matches local (see app/ml/prioritizer.py).
+# API Dockerfile - Production Ready with Multi-Stage Build
+# Monorepo layout under /app so ML path resolution matches local
 
-FROM python:3.12-slim-bookworm
+# ==============================================================================
+# STAGE 1: Builder
+# ==============================================================================
+FROM python:3.12-slim-bookworm AS builder
 
-
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-
-    PYTHONUNBUFFERED=1 \
-
-    PIP_NO_CACHE_DIR=1 \
-
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-
-
-RUN apt-get update \
-
-    && apt-get install -y --no-install-recommends libpq5 \
-
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
+# Copy and install requirements
+COPY backend/requirements /tmp/requirements
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r /tmp/requirements/base.txt
+
+# ==============================================================================
+# STAGE 2: Production
+# ==============================================================================
+FROM python:3.12-slim-bookworm AS production
+
+# Security: Run as non-root user
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Application configuration
+ENV APP_ENV=production
+ENV UPLOAD_PATH=/app/uploads
+ENV LOG_LEVEL=info
+ENV PYTHONFAULTHANDLER=1
+ENV PYTHONHASHSEED=random
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --gid 10001 aegiscore && \
+    useradd --uid 10001 --gid aegiscore --create-home --home-dir /home/aegiscore aegiscore
+
+# Create directories with proper permissions
+RUN mkdir -p /app/uploads /var/uploads /app/logs && \
+    chown -R aegiscore:aegiscore /app /var/uploads
 
 WORKDIR /app
 
+# Copy application code
+COPY --chown=aegiscore:aegiscore backend /app/backend
+COPY --chown=aegiscore:aegiscore ml /app/ml
+COPY --chown=aegiscore:aegiscore scripts /app/scripts
+COPY --chown=aegiscore:aegiscore database /app/database
 
-
-ARG INSTALL_DEV_DEPS=false
-
-COPY backend/requirements /tmp/requirements
-
-RUN pip install --no-cache-dir -r /tmp/requirements/base.txt \
-
-    && if [ "$INSTALL_DEV_DEPS" = "true" ] ; then pip install --no-cache-dir -r /tmp/requirements/dev.in ; fi
-
-
-
-# --- ORIGINAL COPIES ---
-
-COPY backend /app/backend
-
-COPY ml /app/ml
-
-
-
-# --- 🔥 ADDED (VERY IMPORTANT FOR SEEDING) ---
-
-COPY scripts /app/scripts
-
-COPY database /app/database
-
-
-
-# --- USER SETUP ---
-
-RUN groupadd --gid 10001 aegiscore \
-
-    && useradd --uid 10001 --gid aegiscore --create-home --home-dir /home/aegiscore aegiscore \
-
-    && chown -R aegiscore:aegiscore /app
-
-
-
+# Switch to non-root user
 USER aegiscore
 
-WORKDIR /app/backend
-
-
-
+# Expose API port
 EXPOSE 8000
 
+# Health check - verifies API is responsive
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-
-# Inline shell (no copied .sh file) so Windows CRLF in the repo cannot break container startup.
-
-ENTRYPOINT ["/bin/sh", "-c", "cd /app/backend && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Production entrypoint with migrations
+ENTRYPOINT ["/bin/sh", "-c", \
+    "cd /app/backend && \
+    echo 'Running database migrations...' && \
+    alembic upgrade head && \
+    echo 'Starting API server...' && \
+    exec uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 4 \
+    --loop uvloop \
+    --http h11 \
+    --proxy-headers \
+    --forwarded-allow-ips '*' \
+    --access-log \
+    --log-level info"]

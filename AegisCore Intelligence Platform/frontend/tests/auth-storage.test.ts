@@ -11,10 +11,10 @@ describe("auth-storage", () => {
     sessionStorage.clear();
   });
 
-  it("round-trips tokens and hasSession", () => {
+  it("tracks session state without exposing tokens", () => {
     expect(hasSession()).toBe(false);
     setTokens("a", "b");
-    expect(getAccessToken()).toBe("a");
+    expect(getAccessToken()).toBeNull();
     expect(hasSession()).toBe(true);
     clearTokens();
     expect(hasSession()).toBe(false);

@@ -140,9 +140,16 @@ class AnalyticsRepository:
             .order_by(func.date(VulnerabilityFinding.discovered_at).asc())
         )
         rows = self.db.execute(stmt).all()
+        def _format_date(d):
+            if d is None:
+                return ""
+            if isinstance(d, str):
+                return d
+            return d.isoformat()
+
         return [
             {
-                "date": r.bucket_date.isoformat() if r.bucket_date else "",
+                "date": _format_date(r.bucket_date),
                 "opened_count": int(r.opened_count or 0),
                 "avg_risk_score": round(float(r.avg_risk_score), 2) if r.avg_risk_score is not None else None,
             }

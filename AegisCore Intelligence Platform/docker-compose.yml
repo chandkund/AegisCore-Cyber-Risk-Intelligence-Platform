@@ -1,82 +1,220 @@
-version: "3.9"
-
-# Local / demo stack: PostgreSQL + API + Next.js
-# Usage:
-#   1. copy .env.example to .env
-#   2. set required secrets
-#   3. run: docker compose up --build
-#
-# Notes:
-# - API runs Alembic on startup, then uvicorn
-# - ML inference is off by default until model artifacts are mounted
-
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-aegiscore}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegiscore_local_dev_only}
-      POSTGRES_DB: ${POSTGRES_DB:-aegiscore}
-    ports:
-      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
-    volumes:
-      - aegiscore_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-    ports:
-      - "${API_PUBLISH_PORT:-8000}:8000"
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://aegiscore:aegiscore_local_dev_only@postgres:5432/aegiscore}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_JSON: ${LOG_JSON:-true}
-      ML_INFERENCE_ENABLED: ${ML_INFERENCE_ENABLED:-false}
-      ML_MODEL_PATH: ${ML_MODEL_PATH:-ml/models/artifacts/risk_prioritization.joblib}
-      PROMETHEUS_METRICS_ENABLED: ${PROMETHEUS_METRICS_ENABLED:-false}
-      APP_ENV: ${APP_ENV:-development}
-      UPLOAD_DIR: /app/uploads
-    volumes:
-      - aegiscore_uploads:/app/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import sys, urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else sys.exit(1)"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
-
-  web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
-    ports:
-      - "${WEB_PUBLISH_PORT:-3000}:3000"
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-    depends_on:
-      api:
-        condition: service_healthy
-
-volumes:
-  aegiscore_pgdata:
+version: "3.9"
+
+# AegisCore Intelligence Platform - Full Local Development Stack
+# 
+# Services included:
+#   - PostgreSQL 16 with health checks
+#   - Redis 7 (caching & sessions)
+#   - Backend API (FastAPI + Uvicorn)
+#   - Frontend (Next.js)
+#   - Prometheus (metrics)
+#   - Grafana (dashboards)
+#
+# Quick Start:
+#   1. cp .env.example .env
+#   2. docker compose up --build -d
+#   3. docker compose logs -f api
+#
+# URLs:
+#   - App:        http://localhost:3000
+#   - API Docs:   http://localhost:8000/docs
+#   - Health:     http://localhost:8000/health
+#   - Prometheus: http://localhost:9090
+#   - Grafana:    http://localhost:3001 (admin/admin)
+#
+# Maintenance:
+#   docker compose down -v          # Stop & remove volumes
+#   docker compose exec api alembic upgrade head  # Run migrations
+#
+# Usage:
+#   1. copy .env.example to .env
+#   2. set required secrets
+#   3. run: docker compose up --build
+#
+# Notes:
+# - API runs Alembic on startup, then uvicorn
+# - ML inference is off by default until model artifacts are mounted
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegiscore-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aegiscore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegiscore_local_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-aegiscore}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    volumes:
+      - aegiscore_pgdata:/var/lib/postgresql/data
+      - ./backend/init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: aegiscore-redis
+    ports:
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
+    volumes:
+      - aegiscore_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: aegiscore-api
+    ports:
+      - "${API_PUBLISH_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://aegiscore:aegiscore_local_dev_only@postgres:5432/aegiscore_oltp}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
+      ML_INFERENCE_ENABLED: ${ML_INFERENCE_ENABLED:-false}
+      ML_MODEL_PATH: ${ML_MODEL_PATH:-ml/models/artifacts/risk_prioritization.joblib}
+      PROMETHEUS_METRICS_ENABLED: ${PROMETHEUS_METRICS_ENABLED:-true}
+      APP_ENV: ${APP_ENV:-development}
+      UPLOAD_DIR: /var/uploads
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-aegiscore-api}
+    volumes:
+      - aegiscore_uploads:/var/uploads
+      - ./backend:/app/backend:ro  # Mount for live reload in dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else sys.exit(1)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: aegiscore-web
+    ports:
+      - "${WEB_PUBLISH_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: aegiscore-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - aegiscore_prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: aegiscore-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - aegiscore_grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - aegiscore-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  aegiscore_pgdata:
+    driver: local
+  aegiscore_redisdata:
+    driver: local
   aegiscore_uploads:
+    driver: local
+  aegiscore_prometheus:
+    driver: local
+  aegiscore_grafana:
+    driver: local
+
+networks:
+  aegiscore-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

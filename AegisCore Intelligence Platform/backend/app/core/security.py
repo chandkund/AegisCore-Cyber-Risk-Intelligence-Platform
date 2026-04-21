@@ -30,9 +30,9 @@ def generate_refresh_plain() -> str:
 
 def create_access_token(
     *,
-    subject: uuid.UUID,
-    roles: list[str],
-    tenant_id: uuid.UUID,
+    subject: uuid.UUID | str,
+    roles: list[str] | None = None,
+    tenant_id: uuid.UUID | None = None,
     expires_delta: timedelta | None = None,
 ) -> str:
     settings = get_settings()
@@ -44,8 +44,8 @@ def create_access_token(
     )
     payload: dict[str, Any] = {
         "sub": str(subject),
-        "tid": str(tenant_id),
-        "roles": roles,
+        "tid": str(tenant_id) if tenant_id is not None else "",
+        "roles": roles or [],
         "typ": "access",
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),

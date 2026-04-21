@@ -31,3 +31,16 @@ class UserOut(BaseModel):
 
 class UserRoleAssign(BaseModel):
     role_name: str = Field(min_length=1, max_length=64)
+
+
+class UserInvitationCreate(BaseModel):
+    email: EmailStr
+    role_name: str = Field(min_length=1, max_length=64)
+    expires_in_hours: int = Field(default=72, ge=1, le=168)
+
+
+class UserInvitationOut(BaseModel):
+    invitation_token: str
+    email: EmailStr
+    role_name: str
+    expires_at: datetime
