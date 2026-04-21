@@ -19,13 +19,22 @@ from app.schemas.analytics import (
     TopAssetRow,
 )
 from app.schemas.compliance import ComplianceReportOut, RootCauseCluster
+from app.services.cache_service import cached, invalidate_on_change, CacheService
+
+# Cache TTLs
+CACHE_TTL_SUMMARY = 60  # 1 minute for summary (frequently changing)
+CACHE_TTL_TREND = 300  # 5 minutes for trends
+CACHE_TTL_FORECAST = 600  # 10 minutes for forecasts
+CACHE_TTL_CLUSTERS = 1800  # 30 minutes for clusters
 
 
 class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = AnalyticsRepository(db)
+        self.cache = CacheService()
 
+    @cached("analytics:summary", ttl=CACHE_TTL_SUMMARY)
     def summary(self, *, tenant_id: uuid.UUID) -> AnalyticsSummary:
         total = self.repo.total_open(tenant_id=tenant_id)
         by_status = [
@@ -41,6 +50,10 @@ class AnalyticsService:
             by_status=by_status,
             by_severity=by_sev,
         )
+
+    def invalidate_summary_cache(self, tenant_id: uuid.UUID) -> None:
+        """Invalidate summary cache when data changes."""
+        self.cache.delete_pattern(tenant_id, "analytics:summary")
 
     def top_assets(self, *, tenant_id: uuid.UUID, limit: int = 20) -> list[TopAssetRow]:
         rows = self.repo.top_assets_by_open_findings(tenant_id=tenant_id, limit=limit)

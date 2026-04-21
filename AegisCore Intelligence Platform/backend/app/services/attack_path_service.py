@@ -150,3 +150,7 @@ class AttackPathService:
             nodes=nodes,
             edges=edge_list,
         )
+
+
+class AttackPathSimulationService(AttackPathService):
+    """Backward-compatible alias for legacy imports."""

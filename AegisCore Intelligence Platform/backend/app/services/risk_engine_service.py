@@ -181,8 +181,13 @@ class RiskEngineService:
         # Exploit availability
         exploit_score = 1.0 if cve.exploit_available else 0.0
         
-        # Age penalty (linear increase to max at AGE_DECAY_DAYS)
-        age_days = (now - finding.discovered_at).days
+        # Age penalty (linear increase to max at AGE_DECAY_DAYS).
+        # SQLite may materialize datetimes as naive even when originally UTC.
+        discovered_at = finding.discovered_at
+        if discovered_at.tzinfo is None:
+            discovered_at = discovered_at.replace(tzinfo=timezone.utc)
+        comparison_now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        age_days = (comparison_now - discovered_at).days
         age_ratio = min(age_days / self.AGE_DECAY_DAYS, 1.0)
         age_score = age_ratio
         

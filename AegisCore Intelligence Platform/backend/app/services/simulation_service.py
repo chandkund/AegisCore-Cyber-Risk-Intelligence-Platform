@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.oltp import Asset, VulnerabilityFinding
+from app.models.oltp import Asset, CveRecord, VulnerabilityFinding
 
 
 @dataclass
